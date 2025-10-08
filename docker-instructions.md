@@ -17,5 +17,5 @@
 `$ docker run -it sionna-dl-6g -- --epochs 5 --batch-size 128`
 
 #### Reuse the existing container and attach
-`$ docker start -ai upbeat_wright`
+`$ docker start -ai upbeat_wright`  
 `-a` attaches to STDOUT/STDERR; `-i` keeps STDIN open.
