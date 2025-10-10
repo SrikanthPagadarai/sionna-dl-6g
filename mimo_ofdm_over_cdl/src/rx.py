@@ -57,7 +57,7 @@ if __name__ == "__main__":
     Example standalone test for RX stage.
     Uses dummy y and no for demonstration.
     """
-    from csi import CSI
+    from .csi import CSI
     from sionna.phy.utils import ebnodb2no
 
     cfg = Config(direction="downlink", perfect_csi=True)

@@ -1,7 +1,8 @@
-from .config import Config
-from .csi import CSI
-from .tx import Tx
-from .channel import Channel
-from .rx import Rx
+from importlib import import_module
 
 __all__ = ["Config", "CSI", "Tx", "Channel", "Rx"]
+
+def __getattr__(name):
+    if name in __all__:
+        return getattr(import_module(f".{name.lower()}", __name__), name)
+    raise AttributeError(name)

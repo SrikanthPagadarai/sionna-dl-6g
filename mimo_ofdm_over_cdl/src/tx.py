@@ -56,7 +56,7 @@ if __name__ == "__main__":
     Example usage for standalone TX stage.
     Creates CSI once, then runs the TX pipeline.
     """
-    from csi import CSI
+    from .csi import CSI
 
     cfg = Config(direction="downlink")
     B = tf.constant(4, dtype=tf.int32)

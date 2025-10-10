@@ -27,7 +27,7 @@ if __name__ == "__main__":
     Example standalone test for Channel stage.
     Simulates channel application on random input with cached CSI.h_freq.
     """
-    from csi import CSI
+    from .csi import CSI
     from sionna.phy.utils import ebnodb2no
 
     cfg = Config(direction="downlink")
