@@ -12,7 +12,6 @@ class Channel:
     def __init__(self, cfg: Config, csi: CSI):
         self.cfg = cfg
         self.csi = csi
-        self.rg = self.csi.rg
         self._apply = ApplyOFDMChannel(add_awgn=True)
 
     @tf.function
@@ -30,19 +29,17 @@ if __name__ == "__main__":
     from .csi import CSI
     from sionna.phy.utils import ebnodb2no
 
-    cfg = Config(direction="downlink")
+    cfg = Config(direction="uplink")
     B = tf.constant(4, dtype=tf.int32)
     EbNo_dB = tf.constant(10.0)
 
-    csi = CSI(cfg, batch_size=B)
-    n_tx  = csi.rg.num_tx
-    n_sym = csi.rg.num_ofdm_symbols
-    n_sc  = csi.rg.fft_size
+    csi = CSI(cfg)
+    csi.build(B)
 
     channel = Channel(cfg, csi)
 
     # Generate dummy transmitted resource grid
-    x_shape = (B, n_tx, n_sym, n_sc)
+    x_shape = (B, cfg.rg.num_tx, cfg.rg.num_ofdm_symbols, cfg.rg.fft_size)
     x_rg_tx = tf.complex(tf.random.normal(x_shape, dtype=tf.float32),tf.random.normal(x_shape, dtype=tf.float32))
     no = ebnodb2no(EbNo_dB, cfg.num_bits_per_symbol, cfg.coderate, cfg.rg)
 

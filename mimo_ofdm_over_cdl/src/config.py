@@ -66,7 +66,14 @@ class Config:
     # build/cache objects used across modules
     def build(self) -> "Config":
         # map one stream per UT antenna
+        '''
+        if self.direction == "uplink":
+            self._num_streams_per_tx = self._num_ut_ant
+        elif self.direction == "downlink":
+            self._num_streams_per_tx = self._num_bs_ant
+            '''
         self._num_streams_per_tx = self._num_ut_ant
+        
         # Stream matrix: one TX, one RX stream group
         self._sm = StreamManagement(np.array([[1]]), self._num_streams_per_tx)
 

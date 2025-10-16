@@ -1,6 +1,6 @@
 from importlib import import_module
 
-__all__ = ["Config", "CSI", "Tx", "Channel", "Rx", "System"]
+__all__ = ["Config", "CSI", "Tx", "Channel", "Rx", "NeuralRx", "System"]
 
 def __getattr__(name):
     if name in __all__:

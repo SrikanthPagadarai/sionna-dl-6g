@@ -16,19 +16,19 @@ class Tx:
     Pipeline:
       BinarySource -> LDPC5GEncoder -> Mapper -> ResourceGridMapper -> (optional) RZFPrecoder
     """
-    def __init__(self, cfg: Config, csi: CSI):
+    def __init__(self, cfg: Config, csi: CSI, channel_coding_off: bool = False):
         self.cfg = cfg
         self.csi = csi
-        self.rg = self.csi.rg
+        self._channel_coding_off = channel_coding_off
 
         self._binary_source = BinarySource()
         self._encoder = LDPC5GEncoder(self.cfg.k, self.cfg.n)
         self._mapper = Mapper(self.cfg.modulation, self.cfg.num_bits_per_symbol)
-        self._rg_mapper = ResourceGridMapper(self.rg)
+        self._rg_mapper = ResourceGridMapper(self.cfg.rg)
 
         self._precoder: Optional[RZFPrecoder] = None
         if self.cfg.direction == "downlink":
-            self._precoder = RZFPrecoder(self.rg, self.cfg.sm, return_effective_channel=True)
+            self._precoder = RZFPrecoder(self.cfg.rg, self.cfg.sm, return_effective_channel=True)
 
         self._num_streams_per_tx = self.cfg.num_streams_per_tx
 
@@ -37,8 +37,11 @@ class Tx:
         self.csi.assert_batch(batch_size)
 
         # Bits -> code -> symbols -> RG
-        b = self._binary_source([batch_size, 1, self._num_streams_per_tx, self.cfg.k])
-        c = self._encoder(b)
+        if self._channel_coding_off:
+            c = self._binary_source([batch_size, 1, self._num_streams_per_tx, self.cfg.n])            
+        else:
+            b = self._binary_source([batch_size, 1, self._num_streams_per_tx, self.cfg.k])
+            c = self._encoder(b)
         x = self._mapper(c)
         x_rg = self._rg_mapper(x)
 
@@ -61,7 +64,8 @@ if __name__ == "__main__":
     cfg = Config(direction="downlink")
     B = tf.constant(4, dtype=tf.int32)
 
-    csi = CSI(cfg, batch_size=B)
+    csi = CSI(cfg)
+    csi.build(B)
     tx = Tx(cfg, csi)
     out = tx(B)
 

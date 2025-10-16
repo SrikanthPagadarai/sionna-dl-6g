@@ -10,14 +10,13 @@ class Rx:
     """
     Full receiver chain; uses the *shared* CSI.h_freq for UL perfect-CSI path.
     """
-    def __init__(self, cfg: Config, csi: CSI):
+    def __init__(self, cfg: Config, csi: CSI, channel_coding_off: bool = False):
         self.cfg = cfg
         self.csi = csi
-        self.perfect_csi = cfg.perfect_csi
-        self.rg = self.csi.rg
+        self._channel_coding_off = channel_coding_off
 
-        self._ce = LSChannelEstimator(self.rg, interpolation_type="nn")
-        self._eq = LMMSEEqualizer(self.rg, self.cfg.sm)
+        self._ce = LSChannelEstimator(self.cfg.rg, interpolation_type="nn")
+        self._eq = LMMSEEqualizer(self.cfg.rg, self.cfg.sm)
         self._demapper = Demapper("app", self.cfg.modulation, self.cfg.num_bits_per_symbol)
         self._decoder = LDPC5GDecoder(LDPC5GEncoder(self.cfg.k, self.cfg.n), hard_out=True)
 
@@ -26,7 +25,7 @@ class Rx:
         self.csi.assert_batch(batch_size)
 
         # Perfect vs estimated CSI
-        if self.perfect_csi:
+        if self.cfg.perfect_csi:
             if self.cfg.direction == "uplink":
                 h_hat = self.csi.remove_nulled_scs(self.csi.h_freq)
             else:
@@ -40,39 +39,49 @@ class Rx:
         # Equalize, demap, decode
         x_hat, no_eff = self._eq(y, h_hat, err_var, no)
         llr = self._demapper(x_hat, no_eff)
-        b_hat = self._decoder(llr)
+        b_hat = None
+        if not self._channel_coding_off:
+            b_hat = self._decoder(llr)
 
         return {"h_hat": h_hat, "err_var": err_var, "x_hat": x_hat, "no_eff": no_eff, "llr": llr, "b_hat": b_hat}
 
 
 if __name__ == "__main__":
-    """
-    Example standalone test for RX stage.
-    Uses dummy y and no for demonstration.
-    """
-    from .csi import CSI
+    # Minimal standalone smoke test for Rx
+    import tensorflow as tf
     from sionna.phy.utils import ebnodb2no
+    from .config import Config
+    from .csi import CSI
+    from .rx import Rx
 
-    cfg = Config(direction="downlink", perfect_csi=True)
-    B = tf.constant(4, dtype=tf.int32)
-    EbNo_dB = tf.constant(10.0)
+    def rand_cplx(shape, dtype=tf.float32):
+        return tf.complex(tf.random.normal(shape, dtype=dtype),tf.random.normal(shape, dtype=dtype))
 
-    csi = CSI(cfg, batch_size=B)
+    # Setup
+    cfg = Config(direction="downlink", perfect_csi=False)
+    B = tf.constant(4, tf.int32)
+    EbNo_dB = tf.constant(10.0, tf.float32)
+
+    csi = CSI(cfg)
+    csi.build(B)
     rx = Rx(cfg, csi)
 
-    # Dummy input signal
-    n_sym = csi.rg.num_ofdm_symbols
-    n_sc  = csi.rg.fft_size
-    num_tx = csi.rg.num_tx
-    num_streams_per_tx = csi.rg.num_streams_per_tx
-    n_guard_left, n_guard_right = csi.rg.num_guard_carriers
-    y_shape = (B, num_tx, num_streams_per_tx, n_sym, n_sc)
-    g_shape = (B, num_tx, num_streams_per_tx, num_tx, num_streams_per_tx, n_sym, n_sc-n_guard_left-n_guard_right-1)
-    y = tf.complex(tf.random.normal(y_shape, dtype=tf.float32),tf.random.normal(y_shape, dtype=tf.float32))
-    g = tf.complex(tf.random.normal(g_shape, dtype=tf.float32),tf.random.normal(g_shape, dtype=tf.float32))
-    no = ebnodb2no(EbNo_dB, cfg.num_bits_per_symbol, cfg.coderate, csi.rg)
+    # dummy inputs
+    if cfg.direction == "uplink":
+        y = rand_cplx((B, 1, cfg.num_bs_ant, cfg.rg.num_ofdm_symbols, cfg.rg.fft_size))
+        g = None
+    else:  # downlink
+        y = rand_cplx((B, cfg.rg.num_tx, cfg.rg.num_streams_per_tx, cfg.rg.num_ofdm_symbols, cfg.rg.fft_size))
+        gl, gr = cfg.rg.num_guard_carriers
+        n_sc_eff = cfg.rg.fft_size - gl - gr - 1# if cfg.rg.dc
+        g = rand_cplx((B, cfg.rg.num_tx, cfg.rg.num_streams_per_tx, cfg.rg.num_tx,
+                       cfg.rg.num_streams_per_tx, cfg.rg.num_ofdm_symbols, n_sc_eff))
 
+    no = ebnodb2no(EbNo_dB, cfg.num_bits_per_symbol, cfg.coderate, cfg.rg)
+
+    # Run & report
     out = rx(B, y, no, g)
     print("\n[RX] Output shapes:")
     for k, v in out.items():
-        print(f"{k:10s}: shape={v.shape}")
+        print(f"{k:10s}: {v.shape}")
+

@@ -23,10 +23,9 @@ class CSI:
       .cfg, .rg, .h_freq, .remove_nulled_scs
     """
 
-    def __init__(self, cfg: Config, batch_size: int | tf.Tensor):
+    def __init__(self, cfg: Config):
         self.cfg = cfg
-        self.rg: ResourceGrid = self.cfg.rg
-        self.batch_size = tf.convert_to_tensor(batch_size, dtype=tf.int32)
+        self.batch_size = None
 
         # Determinism if desired
         sionna.phy.config.seed = int(self.cfg._seed)
@@ -61,22 +60,27 @@ class CSI:
         )
 
         # Subcarrier frequencies for mapping CIR -> H(f)
-        self._frequencies = subcarrier_frequencies(self.rg.fft_size, self.rg.subcarrier_spacing)
+        self._frequencies = subcarrier_frequencies(self.cfg.rg.fft_size, self.cfg.rg.subcarrier_spacing)
 
         # For perfect UL-CSI
-        self.remove_nulled_scs = RemoveNulledSubcarriers(self.rg)
+        self.remove_nulled_scs = RemoveNulledSubcarriers(self.cfg.rg)
 
-        # Build and cache h_freq for this simulation iteration
+    # Build h_freq for this simulation iteration
+    def build(self, batch_size: int | tf.Tensor):
+        self.batch_size = tf.convert_to_tensor(batch_size, dtype=tf.int32)
+
         a, tau = self._cdl(
             batch_size=self.batch_size,
-            num_time_steps=self.rg.num_ofdm_symbols,
-            sampling_frequency=1.0 / self.rg.ofdm_symbol_duration,
+            num_time_steps=self.cfg.rg.num_ofdm_symbols,
+            sampling_frequency=1.0 / self.cfg.rg.ofdm_symbol_duration,
         )
-        self.h_freq = cir_to_ofdm_channel(self._frequencies, a, tau, normalize=True)
+        self.h_freq = cir_to_ofdm_channel(
+            self._frequencies, a, tau, normalize=True
+        )
 
     def assert_batch(self, b: tf.Tensor):
         tf.debugging.assert_equal(
             tf.cast(b, tf.int32),
             self.batch_size,
-            message="Batch size used by Tx/Rx must match CSI batch_size."
+            message="Batch size used by Tx/Rx must match CSI batch_size.",
         )
