@@ -48,7 +48,7 @@ class Config:
     _num_guard_carriers: Tuple[int, int] = field(init=False, default=(5, 6), repr=False)
     _dc_null: bool = field(init=False, default=True, repr=False)
     _pilot_pattern: str = field(init=False, default="kronecker", repr=False)
-    _pilot_ofdm_symbol_indices: Tuple[int, ...] = field(init=False, default=(2, 11), repr=False)
+    _pilot_ofdm_symbol_indices: Tuple[int, ...] = field(init=False, default=(2, 5, 8, 11), repr=False)
     _num_ut_ant: int = field(init=False, default=4, repr=False)
     _num_bs_ant: int = field(init=False, default=8, repr=False)
     _modulation: str = field(init=False, default="qam", repr=False)

@@ -1,8 +1,8 @@
 # system.py
 import tensorflow as tf
 from typing import Dict, Any
-from sionna.phy import Block
 from sionna.phy.utils import ebnodb2no, compute_ber
+from tensorflow.keras import Model
 
 from .config import Config, BitsPerSym, CDLModel, Direction
 from .csi import CSI
@@ -12,7 +12,7 @@ from .rx import Rx
 from .neural_rx import NeuralRx
 
 
-class System(Block):
+class System(Model):
     def __init__(self,
                  *,
                  training: bool = False,
@@ -49,32 +49,32 @@ class System(Block):
 
         # CSI/Tx/Channel/Rx
         self._csi = CSI(self._cfg)
-        self._tx  = Tx(self._cfg, self._csi, self._training) # in training, channel coding is off in Tx
-        self._ch  = Channel(self._cfg, self._csi)
-        self._rx  = Rx(self._cfg, self._csi, self._training) # in training, correspondigly, channel decoding is off in Rx
-        self._neural_rx = NeuralRx(self._cfg, self._training, self._num_conv2d_filters, self._num_resnet_layers, self._num_res_blocks) # same as above
+        self._tx  = Tx(self._cfg, self._training) # in training, channel coding is off in Tx
+        self._ch  = Channel()
+        self._rx  = Rx(self._cfg, self._csi) # baseline Rx (not trained)
+        self._neural_rx = NeuralRx(self._cfg, self._training, self._num_conv2d_filters, 
+                                   self._num_resnet_layers, self._num_res_blocks) # in training, correspondigly, channel decoding is off in NeuralRx
 
         # Loss function
         self.bce = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
     @tf.function
-    def call(self, batch_size: tf.Tensor, ebno_db: tf.Tensor):
-        B = batch_size
-
-        # Build CSI for this B once per call
-        self._csi.build(B)
+    def __call__(self, batch_size: tf.Tensor, ebno_db: tf.Tensor):
+        # Build CSI for this batch_size once per call
+        h_freq = self._csi.build(batch_size)
 
         no = ebnodb2no(ebno_db, self._cfg.num_bits_per_symbol, self._cfg.coderate, self._cfg.rg)
 
-        tx_out = self._tx(B)
-        y_out  = self._ch(B, tx_out["x_rg_tx"], no)
+        tx_out = self._tx(batch_size, h_freq)
+        y_out  = self._ch(tx_out["x_rg_tx"], h_freq, no)
 
-        rx = self._neural_rx if self._use_neural_rx else self._rx
-        rx_args = (y_out["y"], no) if self._use_neural_rx else (B, y_out["y"], no, tx_out["g"])
-        rx_out = rx(*rx_args)
+        rx_to_use = self._neural_rx if self._use_neural_rx else self._rx
+        rx_args_to_pass = (y_out["y"], no, batch_size) if self._use_neural_rx else (y_out["y"], h_freq, no, tx_out["g"])
+        rx_out = rx_to_use(*rx_args_to_pass)
 
         if self._use_neural_rx and self._training:
-            return self.bce(tx_out["c"], rx_out["llr"])
+            loss = self.bce(tx_out["c"], rx_out["llr"])
+            return loss
 
         return tx_out["b"], rx_out["b_hat"]
 

@@ -10,24 +10,22 @@ class Rx:
     """
     Full receiver chain; uses the *shared* CSI.h_freq for UL perfect-CSI path.
     """
-    def __init__(self, cfg: Config, csi: CSI, channel_coding_off: bool = False):
-        self.cfg = cfg
-        self.csi = csi
-        self._channel_coding_off = channel_coding_off
+    def __init__(self, cfg: Config, csi: CSI):
+        self._cfg = cfg
+        self._csi = csi
 
-        self._ce = LSChannelEstimator(self.cfg.rg, interpolation_type="nn")
-        self._eq = LMMSEEqualizer(self.cfg.rg, self.cfg.sm)
-        self._demapper = Demapper("app", self.cfg.modulation, self.cfg.num_bits_per_symbol)
-        self._decoder = LDPC5GDecoder(LDPC5GEncoder(self.cfg.k, self.cfg.n), hard_out=True)
+        self._ce = LSChannelEstimator(self._cfg.rg, interpolation_type="nn")
+        self._eq = LMMSEEqualizer(self._cfg.rg, self._cfg.sm)
+        self._demapper = Demapper("app", self._cfg.modulation, self._cfg.num_bits_per_symbol)
+        self._decoder = LDPC5GDecoder(LDPC5GEncoder(self._cfg.k, self._cfg.n), hard_out=True)
 
     @tf.function
-    def __call__(self, batch_size: tf.Tensor, y: tf.Tensor, no: tf.Tensor, g: Optional[tf.Tensor] = None) -> Dict[str, Any]:
-        self.csi.assert_batch(batch_size)
+    def __call__(self, y: tf.Tensor, h_freq: tf.Tensor, no: tf.Tensor, g: Optional[tf.Tensor] = None) -> Dict[str, Any]:
 
         # Perfect vs estimated CSI
-        if self.cfg.perfect_csi:
-            if self.cfg.direction == "uplink":
-                h_hat = self.csi.remove_nulled_scs(self.csi.h_freq)
+        if self._cfg.perfect_csi:
+            if self._cfg.direction == "uplink":
+                h_hat = self._csi.remove_nulled_scs(h_freq)
             else:
                 if g is None:
                     raise ValueError("perfect_csi=True (downlink) requires Tx-provided 'g'.")
@@ -39,9 +37,7 @@ class Rx:
         # Equalize, demap, decode
         x_hat, no_eff = self._eq(y, h_hat, err_var, no)
         llr = self._demapper(x_hat, no_eff)
-        b_hat = None
-        if not self._channel_coding_off:
-            b_hat = self._decoder(llr)
+        b_hat = self._decoder(llr)
 
         return {"h_hat": h_hat, "err_var": err_var, "x_hat": x_hat, "no_eff": no_eff, "llr": llr, "b_hat": b_hat}
 
@@ -58,12 +54,12 @@ if __name__ == "__main__":
         return tf.complex(tf.random.normal(shape, dtype=dtype),tf.random.normal(shape, dtype=dtype))
 
     # Setup
-    cfg = Config(direction="downlink", perfect_csi=False)
+    cfg = Config(direction="downlink", perfect_csi=True)
     B = tf.constant(4, tf.int32)
     EbNo_dB = tf.constant(10.0, tf.float32)
 
     csi = CSI(cfg)
-    csi.build(B)
+    h_freq = csi.build(B)
     rx = Rx(cfg, csi)
 
     # dummy inputs
@@ -80,7 +76,7 @@ if __name__ == "__main__":
     no = ebnodb2no(EbNo_dB, cfg.num_bits_per_symbol, cfg.coderate, cfg.rg)
 
     # Run & report
-    out = rx(B, y, no, g)
+    out = rx(y, h_freq, no, g)
     print("\n[RX] Output shapes:")
     for k, v in out.items():
         print(f"{k:10s}: {v.shape}")

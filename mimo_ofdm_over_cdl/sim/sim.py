@@ -26,7 +26,6 @@ def run_sim(params: Dict[str, Any]) -> Tuple[tf.Tensor, tf.Tensor]:
 
     # Build system with the chosen settings
     system = System(
-        batch_size=cfg["batch_size"],
         direction=cfg["direction"],
         perfect_csi=cfg["perfect_csi"],
         cdl_model=cfg["cdl_model"],

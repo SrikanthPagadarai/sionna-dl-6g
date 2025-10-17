@@ -25,7 +25,6 @@ class CSI:
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
-        self.batch_size = None
 
         # Determinism if desired
         sionna.phy.config.seed = int(self.cfg._seed)
@@ -67,20 +66,15 @@ class CSI:
 
     # Build h_freq for this simulation iteration
     def build(self, batch_size: int | tf.Tensor):
-        self.batch_size = tf.convert_to_tensor(batch_size, dtype=tf.int32)
+        if isinstance(batch_size, tf.Tensor):
+            bs = tf.cast(batch_size, tf.int32)
+        else:
+            bs = int(batch_size)
 
         a, tau = self._cdl(
-            batch_size=self.batch_size,
+            batch_size=bs,
             num_time_steps=self.cfg.rg.num_ofdm_symbols,
             sampling_frequency=1.0 / self.cfg.rg.ofdm_symbol_duration,
         )
-        self.h_freq = cir_to_ofdm_channel(
-            self._frequencies, a, tau, normalize=True
-        )
-
-    def assert_batch(self, b: tf.Tensor):
-        tf.debugging.assert_equal(
-            tf.cast(b, tf.int32),
-            self.batch_size,
-            message="Batch size used by Tx/Rx must match CSI batch_size.",
-        )
+        h_freq = cir_to_ofdm_channel(self._frequencies, a, tau, normalize=True)
+        return h_freq

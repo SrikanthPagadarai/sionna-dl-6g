@@ -9,15 +9,12 @@ class Channel:
     Apply the frequency-domain channel with AWGN.
     Uses the *shared* CSI.h_freq (same tensor seen by Tx/Rx).
     """
-    def __init__(self, cfg: Config, csi: CSI):
-        self.cfg = cfg
-        self.csi = csi
+    def __init__(self):
         self._apply = ApplyOFDMChannel(add_awgn=True)
 
     @tf.function
-    def __call__(self, batch_size: tf.Tensor, x_rg_tx: tf.Tensor, no: tf.Tensor) -> Dict[str, Any]:
-        self.csi.assert_batch(batch_size)
-        y = self._apply(x_rg_tx, self.csi.h_freq, no)
+    def __call__(self, x_rg_tx: tf.Tensor, h_freq: tf.Tensor, no: tf.Tensor) -> Dict[str, Any]:
+        y = self._apply(x_rg_tx, h_freq, no)
         return {"y": y}
 
 
@@ -34,16 +31,16 @@ if __name__ == "__main__":
     EbNo_dB = tf.constant(10.0)
 
     csi = CSI(cfg)
-    csi.build(B)
+    h_freq = csi.build(B)
 
-    channel = Channel(cfg, csi)
+    channel = Channel()
 
     # Generate dummy transmitted resource grid
     x_shape = (B, cfg.rg.num_tx, cfg.rg.num_ofdm_symbols, cfg.rg.fft_size)
     x_rg_tx = tf.complex(tf.random.normal(x_shape, dtype=tf.float32),tf.random.normal(x_shape, dtype=tf.float32))
     no = ebnodb2no(EbNo_dB, cfg.num_bits_per_symbol, cfg.coderate, cfg.rg)
 
-    y = channel(B, x_rg_tx, no)
+    y = channel(x_rg_tx, h_freq, no)
     print("\n[CHANNEL] Output shapes:")
     for k, v in y.items():
         print(f"{k:10s}: shape={v.shape}")

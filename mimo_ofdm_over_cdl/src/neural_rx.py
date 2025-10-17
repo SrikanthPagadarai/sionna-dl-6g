@@ -28,7 +28,7 @@ class ResidualBlock(Layer):
         z = inputs
         for ln, conv in zip(self._layer_norms, self._convs):
             z = ln(z)
-            z = tf.nn.relu(z)
+            z = relu(z)
             z = conv(z)
         return z + inputs
 
@@ -39,7 +39,7 @@ class NeuralRx(Layer):
     """
     def __init__(self, cfg: Config, channel_coding_off: bool = False, num_conv2d_filters: int = 128, num_resnet_layers: int = 2, num_res_blocks: int = 4):
         super().__init__()
-        self.cfg = cfg
+        self._cfg = cfg
         self._channel_coding_off = bool(channel_coding_off)
         self.num_conv2d_filters = int(num_conv2d_filters)
         self.num_resnet_layers = int(num_resnet_layers)
@@ -51,51 +51,60 @@ class NeuralRx(Layer):
                                   activation=None)
 
         # Residual stack (parametrized by CSI/Config)
-        self._res_blocks = [ResidualBlock(num_conv2d_filters=self.num_conv2d_filters,num_resnet_layers=self.num_resnet_layers) for _ in range(self.num_res_blocks)]
+        self._res_blocks = [ResidualBlock(num_conv2d_filters=self.num_conv2d_filters,
+                                          num_resnet_layers=self.num_resnet_layers) for _ in range(self.num_res_blocks)]
 
         # Output conv yields one channel per bit (LLR per bit)
-        self._output_conv = Conv2D(filters=int(self.cfg.rg.num_streams_per_tx)*int(self.cfg.num_bits_per_symbol),
+        self._output_conv = Conv2D(filters=int(self._cfg.num_bits_per_symbol),
                                    kernel_size=(3, 3),
                                    padding='same',
                                    activation=None)
         
-        self._rg_demapper = sn.phy.ofdm.ResourceGridDemapper(self.cfg.rg, self.cfg.sm)
-        self._decoder = LDPC5GDecoder(LDPC5GEncoder(self.cfg.k, self.cfg.n), hard_out=True)
+        self._rg_demapper = sn.phy.ofdm.ResourceGridDemapper(self._cfg.rg, self._cfg.sm)
+        self._decoder = LDPC5GDecoder(LDPC5GEncoder(self._cfg.k, self._cfg.n), hard_out=True)
 
-    def call(self, y: tf.Tensor, no: tf.Tensor) -> tf.Tensor:
-        # Remove num_rx dim and put antenna dim last: [B, S, Ns, Nsc] -> [B, Ns, Nsc, S]
-        y = tf.transpose(tf.squeeze(y, axis=1), [0, 2, 3, 1])
+    def call(self, y: tf.Tensor, no: tf.Tensor, batch_size: tf.Tensor) -> tf.Tensor:
+        # assuming a single receiver, remove the num_rx dimension
+        y = tf.squeeze(y, axis=1)
+        
+        # feeding the noise power in log10 scale helps with the performance
+        no = sn.phy.utils.log10(no)
 
-        # Noise power (log10), broadcast without explicit shapes
-        no_log = sn.phy.utils.log10(no)
-        no_map = tf.ones_like(y[..., :1], dtype=y.dtype.real_dtype) * tf.cast(no_log, y.dtype.real_dtype)
+        # put antenna dim last: y -> [B, N_sym, N_sc, N_ant]
+        y = tf.transpose(y, [0, 2, 3, 1])
 
-        # Stack real/imag per-antenna plus noise channel: [B, Ns, Nsc, 2*S+1]
-        z = tf.concat([tf.math.real(y), tf.math.imag(y), no_map], axis=-1)
+        # Robustly make `no` a [B, 1, 1, 1] tensor (works for scalar or [B])
+        B = tf.shape(y)[0]
+        no = tf.reshape(no, [-1])                      # (?,)
+        no = no + tf.zeros([B], dtype=no.dtype)        # ensure length-B
+        no = tf.reshape(no, [B, 1, 1, 1])              # [B,1,1,1]
 
+        # Broadcast to one channel alongside features
+        no = tf.broadcast_to(no, [B, tf.shape(y)[1], tf.shape(y)[2], 1])
+
+        # stack: z dimensions - [batch_size, num ofdm symbols, num subcarriers, 2*num rx antennas + 1]
+        z = tf.concat([tf.math.real(y), tf.math.imag(y), no], axis=-1)
+        
         # Input conv
         z = self._input_conv(z)
-
+        
         # Residual stack
         for block in self._res_blocks:
             z = block(z)
 
-        # Output conv -> channels = num_streams * bits
+        # Output conv
         z = self._output_conv(z)
-
-        # Prepare shape for resource-grid demapping: [B, 1, S, Ns, Nsc, bits]
-        B, Ns, Nsc = tf.unstack(tf.shape(z)[:3])
-        S    = self.cfg.rg.num_streams_per_tx
-        bits = int(self.cfg.num_bits_per_symbol)
-
-        # resource-grid demapping
-        z = tf.reshape(z, [B, Ns, Nsc, S, bits])      # [B, Ns, Nsc, S, bits]
-        z = tf.transpose(z, [0, 3, 1, 2, 4])          # [B, S, Ns, Nsc, bits]
-        llr = self._rg_demapper(z[:, tf.newaxis, ...]) # [B, 1, S, Ns, Nsc, bits] -> demap
-
-        # Flatten to [B, 1, S, n]
-        llr = tf.reshape(llr, [tf.shape(llr)[0], tf.shape(llr)[1], tf.shape(llr)[2], -1])
-
+        
+        # reshape to fit the dimensions expected at the input of rg-demapper
+        z = sn.phy.utils.insert_dims(z, 2, 1)        
+        z = tf.tile(z, [1, 1, self._cfg.rg.num_streams_per_tx, 1, 1, 1])
+        
+        # resource-grid demapper
+        llr = self._rg_demapper(z)
+        
+        # reshape to fit the dimensions expected at the input of channel decoder
+        llr = tf.reshape(llr, [batch_size, 1, self._cfg.num_ut_ant, self._cfg.n])
+        
         # channel decoding
         b_hat = None
         if not self._channel_coding_off:
