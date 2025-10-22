@@ -1,4 +1,3 @@
-# system.py
 import tensorflow as tf
 from typing import Dict, Any
 from sionna.phy.utils import ebnodb2no, compute_ber

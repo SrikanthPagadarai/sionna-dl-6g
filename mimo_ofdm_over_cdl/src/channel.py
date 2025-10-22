@@ -7,7 +7,6 @@ from .csi import CSI
 class Channel:
     """
     Apply the frequency-domain channel with AWGN.
-    Uses the *shared* CSI.h_freq (same tensor seen by Tx/Rx).
     """
     def __init__(self):
         self._apply = ApplyOFDMChannel(add_awgn=True)

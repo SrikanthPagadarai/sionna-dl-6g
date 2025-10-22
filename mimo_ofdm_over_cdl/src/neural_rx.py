@@ -66,21 +66,20 @@ class NeuralRx(Layer):
     def call(self, y: tf.Tensor, no: tf.Tensor, batch_size: tf.Tensor) -> tf.Tensor:
         # assuming a single receiver, remove the num_rx dimension
         y = tf.squeeze(y, axis=1)
-        
+
         # feeding the noise power in log10 scale helps with the performance
         no = sn.phy.utils.log10(no)
 
         # put antenna dim last: y -> [B, N_sym, N_sc, N_ant]
         y = tf.transpose(y, [0, 2, 3, 1])
 
-        # Robustly make `no` a [B, 1, 1, 1] tensor (works for scalar or [B])
-        B = tf.shape(y)[0]
-        no = tf.reshape(no, [-1])                      # (?,)
-        no = no + tf.zeros([B], dtype=no.dtype)        # ensure length-B
-        no = tf.reshape(no, [B, 1, 1, 1])              # [B,1,1,1]
+        # Robustly make `no` a [tf.shape(y)[0], 1, 1, 1] tensor (works for scalar or [tf.shape(y)[0]])
+        no = tf.reshape(no, [-1])
+        no = no + tf.zeros([tf.shape(y)[0]], dtype=no.dtype) # ensure length: tf.shape(y)[0]
+        no = tf.reshape(no, [tf.shape(y)[0], 1, 1, 1]) # [tf.shape(y)[0],1,1,1]
 
         # Broadcast to one channel alongside features
-        no = tf.broadcast_to(no, [B, tf.shape(y)[1], tf.shape(y)[2], 1])
+        no = tf.broadcast_to(no, [tf.shape(y)[0], tf.shape(y)[1], tf.shape(y)[2], 1])
 
         # stack: z dimensions - [batch_size, num ofdm symbols, num subcarriers, 2*num rx antennas + 1]
         z = tf.concat([tf.math.real(y), tf.math.imag(y), no], axis=-1)
