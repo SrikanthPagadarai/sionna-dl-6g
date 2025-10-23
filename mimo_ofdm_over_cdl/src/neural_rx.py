@@ -27,6 +27,7 @@ class ResidualBlock(Layer):
     def call(self, inputs):
         z = inputs
         for ln, conv in zip(self._layer_norms, self._convs):
+            tf.debugging.assert_type(z, tf.float32)
             z = ln(z)
             z = relu(z)
             z = conv(z)
@@ -55,7 +56,7 @@ class NeuralRx(Layer):
                                           num_resnet_layers=self.num_resnet_layers) for _ in range(self.num_res_blocks)]
 
         # Output conv yields one channel per bit (LLR per bit)
-        self._output_conv = Conv2D(filters=int(self._cfg.num_bits_per_symbol),
+        self._output_conv = Conv2D(filters=int(self._cfg.rg.num_streams_per_tx*self._cfg.num_bits_per_symbol),
                                    kernel_size=(3, 3),
                                    padding='same',
                                    activation=None)
@@ -94,9 +95,12 @@ class NeuralRx(Layer):
         # Output conv
         z = self._output_conv(z)
         
-        # reshape to fit the dimensions expected at the input of rg-demapper
-        z = sn.phy.utils.insert_dims(z, 2, 1)        
-        z = tf.tile(z, [1, 1, self._cfg.rg.num_streams_per_tx, 1, 1, 1])
+        # Split channels into [S, bits]
+        z = tf.reshape(z, [tf.shape(z)[0], tf.shape(z)[1], tf.shape(z)[2], self._cfg.rg.num_streams_per_tx, self._cfg.num_bits_per_symbol])
+
+        # transpose to a form expected by ResourceGridDemapper
+        z = tf.transpose(z, [0, 3, 1, 2, 4])
+        z = tf.expand_dims(z, axis=1)
         
         # resource-grid demapper
         llr = self._rg_demapper(z)
