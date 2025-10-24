@@ -60,6 +60,18 @@ class System(Model):
     @tf.function(
         reduce_retracing=True,
         input_signature=[
+            tf.TensorSpec(shape=[], dtype=tf.int32),    # scalar batch size
+            tf.TensorSpec(shape=[], dtype=tf.float32),  # scalar ebno_db
+        ]
+    )
+    def call_scalar(self, batch_size, ebno_db_scalar):
+        """Scalar-SNR entry point for Sionna PlotBER.simulate()"""
+        ebno_vec = tf.fill([batch_size], ebno_db_scalar)  # expand to (B,)
+        return self.__call__(batch_size, ebno_vec)        # reuse your vector path
+
+    @tf.function(
+        reduce_retracing=True,
+        input_signature=[
             tf.TensorSpec(shape=[], dtype=tf.int32),      # batch_size (scalar)
             tf.TensorSpec(shape=[None], dtype=tf.float32) # ebno_db vector (len == batch_size)
         ]
