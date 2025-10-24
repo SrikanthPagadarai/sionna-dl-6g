@@ -57,7 +57,13 @@ class System(Model):
         # Loss function
         self.bce = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
-    @tf.function
+    @tf.function(
+        reduce_retracing=True,
+        input_signature=[
+            tf.TensorSpec(shape=[], dtype=tf.int32),      # batch_size (scalar)
+            tf.TensorSpec(shape=[None], dtype=tf.float32) # ebno_db vector (len == batch_size)
+        ]
+    )
     def __call__(self, batch_size: tf.Tensor, ebno_db: tf.Tensor):
         # Build CSI for this batch_size once per call
         h_freq = self._csi.build(batch_size)

@@ -170,7 +170,7 @@ if __name__ == "__main__":
     print(f"RG: N_sym={n_sym}, N_sc={n_sc}, N_streams={num_streams}, bits/sym={int(bits_per_sym)}")
     print(f"y shape                   : {y.shape} (expect [B, 1, N_streams, N_sym, N_sc])")
     print(f"no shape/value            : {no.shape} | {float(tf.reshape(no, [-1])[0]) if tf.size(no)>0 else 'scalar'}")
-    print(f"NeuralRx output (LLR, RG) : {rx_out["llr"].shape} (expect [B, 1, N_streams, (N_sym-n_pilots)*(N_sc-nguard-1)])")
+    print(f"NeuralRx output (LLR, RG) : {rx_out['llr'].shape} (expect [B, 1, N_streams, (N_sym-n_pilots)*(N_sc-nguard-1)])")
 
     # If you want to sanity-peek a slice:
     print("Sample LLR vector at [0, 0, 0, :]:")
