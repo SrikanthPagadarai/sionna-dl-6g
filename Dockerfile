@@ -5,7 +5,7 @@ ARG BASE_IMAGE=nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
 ARG ENABLE_GPU=1                  # 1=GPU image, 0=CPU-only
 ARG ENABLE_CUDA_CHECK=1           # 1=fail build if TF wheel CUDA != image CUDA
 ARG TF_PACKAGE=tensorflow         # "tensorflow" or "tensorflow-cpu"
-ARG TF_VERSION=2.15.1             # pin exact TF
+ARG TF_VERSION=2.15.1             # exact TF pin
 
 FROM ${BASE_IMAGE} AS runtime
 
@@ -14,10 +14,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/opt/venv \
     PATH="/opt/venv/bin:${PATH}" \
-    TF_CPP_MIN_LOG_LEVEL=2
-
-# Helpful for XLA to find libdevice when present; harmless if unused
-ENV XLA_FLAGS=--xla_gpu_cuda_data_dir=/usr/local/cuda
+    TF_CPP_MIN_LOG_LEVEL=2 \
+    XLA_FLAGS=--xla_gpu_cuda_data_dir=/usr/local/cuda
 
 WORKDIR /app
 
@@ -48,7 +46,7 @@ RUN python -m pip install --upgrade --force-reinstall "${TF_PACKAGE}==${TF_VERSI
 ARG ENABLE_GPU
 RUN if [ "${ENABLE_GPU}" = "1" ]; then \
       set -e; \
-      CUDA_MM="$(python - <<'PY'\nimport json\nprint('.'.join(json.load(open('/usr/local/cuda/version.json'))['cuda']['version'].split('.')[:2]))\nPY\n)"; \
+      CUDA_MM="$(python -c "import json;print('.'.join(json.load(open('/usr/local/cuda/version.json'))['cuda']['version'].split('.')[:2]))")"; \
       apt-get update; \
       if [ "${CUDA_MM}" = "12.2" ]; then \
         apt-get install -y --no-install-recommends cuda-nvcc-12-2; \
@@ -63,7 +61,12 @@ RUN if [ "${ENABLE_GPU}" = "1" ]; then \
 # (GPU only) Build-time sanity check: TF wheel CUDA == image CUDA
 ARG ENABLE_CUDA_CHECK
 RUN if [ "${ENABLE_GPU}" = "1" ] && [ "${ENABLE_CUDA_CHECK}" = "1" ]; then \
-      python - <<'PY'\nimport json, sys, tensorflow as tf\nimg=json.load(open('/usr/local/cuda/version.json'))['cuda']['version']\nimg_mm='.'.join(img.split('.')[:2])\nb=tf.sysconfig.get_build_info()\ntf_cuda=str(b.get('cuda_version','')).strip()\nprint(f\"[CHECK] Image CUDA: {img_mm} | TF wheel CUDA: {tf_cuda}\")\nif not tf_cuda.startswith(img_mm):\n    print('[ERROR] CUDA mismatch between image and TensorFlow wheel.'); sys.exit(1)\nPY\n; \
+      python -c "import json,sys,tensorflow as tf; \
+img=json.load(open('/usr/local/cuda/version.json'))['cuda']['version']; \
+img_mm='.'.join(img.split('.')[:2]); \
+tf_cuda=str(tf.sysconfig.get_build_info().get('cuda_version','')).strip(); \
+print(f'[CHECK] Image CUDA: {img_mm} | TF wheel CUDA: {tf_cuda}'); \
+sys.exit(0 if tf_cuda.startswith(img_mm) else 1)"; \
     fi
 
 # App code & entrypoint
