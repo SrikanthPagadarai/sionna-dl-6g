@@ -52,11 +52,11 @@ def run_sim(params: Dict[str, Any]) -> Tuple[tf.Tensor, tf.Tensor]:
 
 if __name__ == "__main__":
     base_params = dict(
-        cdl_model="D",
+        cdl_model="C",
         max_mc_iter=1000,
         num_target_block_errors=1000,
         target_bler=1e-3,
-        ebno_db=np.arange(-3, 6, 1),
+        ebno_db=np.arange(-5, 10, 2),
     )
 
     directions: List[str] = ["uplink", "downlink"]
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     out_dir = "results"
     os.makedirs(out_dir, exist_ok=True)
 
-    outfile = os.path.join(out_dir, "all_baseline_results_cdlD.npz")
+    outfile = os.path.join(out_dir, "all_baseline_results_cdlC.npz")
     np.savez(
         outfile,
         ebno_db=base_params["ebno_db"],

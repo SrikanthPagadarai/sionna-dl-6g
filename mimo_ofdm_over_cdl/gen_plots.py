@@ -3,9 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Constants
-INFILE = os.path.join("results", "all_baseline_results_cdlD.npz")
-OUTFILE_UPLINK = os.path.join("results", "uplink_baseline_ber_cdlD.png")
-OUTFILE_DOWNLINK = os.path.join("results", "downlink_baseline_ber_cdlD.png")
+INFILE = os.path.join("results", "all_baseline_results_cdlC.npz")
+OUTFILE_UPLINK = os.path.join("results", "uplink_baseline_ber_cdlC.png")
+OUTFILE_DOWNLINK = os.path.join("results", "downlink_baseline_ber_cdlC.png")
 
 # Load Data
 data = np.load(INFILE, allow_pickle=True)
