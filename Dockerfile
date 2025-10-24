@@ -45,6 +45,10 @@ RUN poetry config virtualenvs.create false \
  && (poetry lock --no-interaction --no-update || poetry lock --no-interaction) \
  && poetry install --no-interaction --no-root --only main ${POETRY_WITH:+--with ${POETRY_WITH}}
 
+# Force the exact TF version
+ARG TF_VERSION=2.15.*
+RUN python -m pip install --upgrade --force-reinstall "tensorflow==${TF_VERSION}"
+
 # App code
 COPY . /app
 

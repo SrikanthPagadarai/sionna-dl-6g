@@ -10,12 +10,6 @@ python = ">=3.10,<3.13"
 sionna = ">=0.15.0"
 matplotlib = "^3.9"
 
-[tool.poetry.group.cpu.dependencies]
-tensorflow = ">=2.15"
-
-[tool.poetry.group.gpu.dependencies]
-tensorflow = { version = ">=2.15", extras = ["and-cuda"] }
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
