@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 
 # Constants
 BASELINE_FILE = os.path.join("results", "all_baseline_results_cdlC.npz")
+INFERENCE_FILE = os.path.join("results", "all_inference_results.npz")
 
 # Load Data
 data = np.load(BASELINE_FILE, allow_pickle=True)
@@ -14,20 +15,29 @@ ber = data["ber"]
 bler = data["bler"]
 cdl_model = str(data["cdl_model"])
 
+# Load inference results for overlap
+inference_data = np.load(INFERENCE_FILE, allow_pickle=True)
+inf_directions = inference_data["directions"]
+inf_ber = inference_data["ber"]
+inf_bler = inference_data["bler"]
+
 os.makedirs("results", exist_ok=True)
+for direction in ["uplink", "downlink"]:
+    loss = np.load(os.path.join("results", f"loss_{direction}.npy"))
+    outfile = os.path.join("results", f"loss_{direction}.png")
+    plt.plot(loss)
+    plt.xlabel("Iteration")
+    plt.ylabel("Loss")
+    plt.title(f"Training Loss Curve ({direction})")
+    plt.grid(True)
+    plt.savefig(outfile, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved {direction}-loss plot to {outfile}")
 
-loss = np.load("loss_history.npy")
-plt.plot(loss)
-plt.xlabel("Iteration")
-plt.ylabel("Loss")
-plt.title("Training Loss Curve")
-plt.grid(True)
-plt.show()
-
-## baseline plots
-OUTFILE_UPLINK = os.path.join("results", "uplink_baseline_ber_cdlC.png")
-OUTFILE_DOWNLINK = os.path.join("results", "downlink_baseline_ber_cdlC.png")
-for direction, outfile in [("uplink", OUTFILE_UPLINK), ("downlink", OUTFILE_DOWNLINK)]:
+## baseline plots (renamed and overlapped with inference results)
+OUTFILE_UPLINK_BER = os.path.join("results", "uplink_ber_cdlC.png")
+OUTFILE_DOWNLINK_BER = os.path.join("results", "downlink_ber_cdlC.png")
+for direction, outfile in [("uplink", OUTFILE_UPLINK_BER), ("downlink", OUTFILE_DOWNLINK_BER)]:
     plt.figure()
     plt.xlabel(r"$E_b/N_0$ (dB)")
     plt.ylabel("BER")
@@ -38,19 +48,25 @@ for direction, outfile in [("uplink", OUTFILE_UPLINK), ("downlink", OUTFILE_DOWN
     elif direction == "downlink":
         plt.title(f"8x4 MIMO - {direction.capitalize()} - CDL-{cdl_model}")
 
+    # baseline plots
     for i in range(len(directions)):
         if directions[i] == direction:
-            label = f"{'perfect CSI' if perfect_csi[i] else 'imperfect CSI'}"
+            label = f"{'perfect CSI' if perfect_csi[i] else 'imperfect CSI'} (baseline)"
             plt.semilogy(ebno_db, ber[i], label=label, marker='o', linestyle='-')
+
+    # overlay inference results
+    for j in range(len(inf_directions)):
+        if inf_directions[j] == direction:
+            plt.semilogy(inference_data["ebno_db"], inf_ber[j], label="NeuralRx (inference)", marker='x', linestyle='--')
 
     plt.legend()
     plt.savefig(outfile, dpi=300, bbox_inches="tight")
     plt.close()
-    print(f"Saved {direction} plot to {outfile}")
+    print(f"Saved {direction} BER plot to {outfile}")
 
-OUTFILE_UPLINK = os.path.join("results", "uplink_baseline_bler_cdlC.png")
-OUTFILE_DOWNLINK = os.path.join("results", "downlink_baseline_bler_cdlC.png")
-for direction, outfile in [("uplink", OUTFILE_UPLINK), ("downlink", OUTFILE_DOWNLINK)]:
+OUTFILE_UPLINK_BLER = os.path.join("results", "uplink_bler_cdlC.png")
+OUTFILE_DOWNLINK_BLER = os.path.join("results", "downlink_bler_cdlC.png")
+for direction, outfile in [("uplink", OUTFILE_UPLINK_BLER), ("downlink", OUTFILE_DOWNLINK_BLER)]:
     plt.figure()
     plt.xlabel(r"$E_b/N_0$ (dB)")
     plt.ylabel("BLER")
@@ -61,12 +77,18 @@ for direction, outfile in [("uplink", OUTFILE_UPLINK), ("downlink", OUTFILE_DOWN
     elif direction == "downlink":
         plt.title(f"8x4 MIMO - {direction.capitalize()} - CDL-{cdl_model}")
 
+    # baseline plots
     for i in range(len(directions)):
         if directions[i] == direction:
-            label = f"{'perfect CSI' if perfect_csi[i] else 'imperfect CSI'}"
+            label = f"{'perfect CSI' if perfect_csi[i] else 'imperfect CSI'} (baseline)"
             plt.semilogy(ebno_db, bler[i], label=label, marker='o', linestyle='-')
+
+    # overlay inference results
+    for j in range(len(inf_directions)):
+        if inf_directions[j] == direction:
+            plt.semilogy(inference_data["ebno_db"], inf_bler[j], label="NeuralRx (inference)", marker='x', linestyle='--')
 
     plt.legend()
     plt.savefig(outfile, dpi=300, bbox_inches="tight")
     plt.close()
-    print(f"Saved {direction} plot to {outfile}")
+    print(f"Saved {direction} BLER plot to {outfile}")
