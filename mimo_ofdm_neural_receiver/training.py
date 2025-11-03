@@ -2,7 +2,15 @@ import tensorflow as tf
 import numpy as np
 import pickle
 import os
+import argparse
 from src.system import System
+
+# CLI: --direction {uplink,downlink,both}
+parser = argparse.ArgumentParser(description="Train NeuralRx for uplink, downlink, or both (default).")
+parser.add_argument("--direction", choices=["uplink", "downlink", "both"], default="both",
+                    help="Which link direction(s) to train. Default: both.")
+args = parser.parse_args()
+directions = ["uplink", "downlink"] if args.direction == "both" else [args.direction]
 
 gpus = tf.config.list_physical_devices('GPU')
 for g in gpus:
@@ -15,12 +23,12 @@ EBN0_DB_MIN = -3.
 EBN0_DB_MAX = 7.
 NUM_TRAINING_ITERATIONS = 10000
 
-# Train NeuralRx in both directions, one after the other
+# Train NeuralRx in the selected direction(s)
 os.makedirs("results", exist_ok=True)
-for direction in ["uplink", "downlink"]:
+for direction in directions:
     print(f"\n=== Training direction: {direction} ===")
 
-    system = System(training=True, use_neural_rx=True, direction=direction, perfect_csi=True)
+    system = System(training=True, use_neural_rx=True, direction=direction, num_conv2d_filters=256)
     print(type(system), getattr(system, "__class__", None))
 
     # Warm-up call on the SAME instance that we'll train (creates variables deterministically)

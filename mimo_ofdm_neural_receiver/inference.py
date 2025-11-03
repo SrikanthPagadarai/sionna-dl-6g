@@ -26,7 +26,7 @@ outdir.mkdir(parents=True, exist_ok=True)
 # Evaluate the neural receiver for both directions one after the other
 for direction in ["uplink", "downlink"]:
     # Parametrize eval_system's direction
-    eval_system = System(training=False, use_neural_rx=True, direction=direction)
+    eval_system = System(training=False, use_neural_rx=True, direction=direction, num_conv2d_filters=256)
 
     # Build eval model & load weights specific to this direction
     _ = eval_system(tf.constant(1, tf.int32), tf.fill([1], tf.constant(10.0, tf.float32)))
@@ -48,7 +48,7 @@ for direction in ["uplink", "downlink"]:
         return eval_system(batch_size, ebno_vec)   # reuse vector-SNR path
 
     # Compute BER/BLER for this direction
-    ebno_vec = np.linspace(EBN0_DB_MIN, EBN0_DB_MAX, 1)
+    ebno_vec = np.arange(EBN0_DB_MIN, EBN0_DB_MAX, 1)
     ber, bler = ber_plots.simulate(
         mc_fun,
         ebno_dbs=ebno_vec,

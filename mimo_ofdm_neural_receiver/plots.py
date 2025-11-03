@@ -57,7 +57,7 @@ for direction, outfile in [("uplink", OUTFILE_UPLINK_BER), ("downlink", OUTFILE_
     # overlay inference results
     for j in range(len(inf_directions)):
         if inf_directions[j] == direction:
-            plt.semilogy(inference_data["ebno_db"], inf_ber[j], label="NeuralRx (inference)", marker='x', linestyle='--')
+            plt.semilogy(ebno_db, inf_ber[j], label="NeuralRx (inference)", marker='x', linestyle='--')
 
     plt.legend()
     plt.savefig(outfile, dpi=300, bbox_inches="tight")
@@ -86,7 +86,7 @@ for direction, outfile in [("uplink", OUTFILE_UPLINK_BLER), ("downlink", OUTFILE
     # overlay inference results
     for j in range(len(inf_directions)):
         if inf_directions[j] == direction:
-            plt.semilogy(inference_data["ebno_db"], inf_bler[j], label="NeuralRx (inference)", marker='x', linestyle='--')
+            plt.semilogy(ebno_db, inf_bler[j], label="NeuralRx (inference)", marker='x', linestyle='--')
 
     plt.legend()
     plt.savefig(outfile, dpi=300, bbox_inches="tight")
