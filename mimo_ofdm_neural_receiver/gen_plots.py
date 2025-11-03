@@ -24,7 +24,10 @@ for direction, outfile in [("uplink", OUTFILE_UPLINK), ("downlink", OUTFILE_DOWN
     plt.ylabel("BER")
     plt.grid(which="both")
     plt.ylim([1e-3, 1.1])
-    plt.title(f"8x4 MIMO - {direction.capitalize()} - CDL-{cdl_model}")
+    if direction == "uplink":
+        plt.title(f"4x8 MIMO - {direction.capitalize()} - CDL-{cdl_model}")
+    elif direction == "downlink":
+        plt.title(f"8x4 MIMO - {direction.capitalize()} - CDL-{cdl_model}")
 
     for i in range(len(directions)):
         if directions[i] == direction:

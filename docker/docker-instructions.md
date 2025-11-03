@@ -1,4 +1,5 @@
-# Build & Run
+# Build & Run 
+##### (run from base directory level)
 
 ### Build
 #### CPU build

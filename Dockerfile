@@ -87,4 +87,4 @@ COPY . /app
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python3", "mimo_ofdm_over_cdl/training.py"]
+CMD ["python3", "mimo_ofdm_neural_receiver/training.py"]
