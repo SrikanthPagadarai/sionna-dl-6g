@@ -51,7 +51,6 @@ class Config:
 
     # BER/BLER simulation
     batch_size: int = 20                      # must match CIRDataset batch size
-    plot_title: str = "PUSCH RT – BLER vs Eb/N0 (LMMSE)"
 
     # Internal seed (kept for parity with ref style)
     _seed: int = field(init=False, default=42, repr=False)

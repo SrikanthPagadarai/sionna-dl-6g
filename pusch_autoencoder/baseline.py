@@ -11,10 +11,10 @@ from config import Config
 _cfg = Config()
 
 # Import the symbols created in system.py
-from system import (
-    Model,
-    channel_model,   # created in system.py
-    batch_size,      # created in system.py (from _cfg.BATCH_SIZE)
+from system import Model
+from cir import (
+    channel_model,   # created in cir.py
+    batch_size,      # created in cir.py (from _cfg.BATCH_SIZE)
     num_ue,          # used for filename formatting
     num_bs_ant,      # used for filename formatting
     num_ue_ant       # used for filename formatting
@@ -35,14 +35,13 @@ ber_plot = PlotBER("Site-Specific MU-MIMO 5G NR PUSCH")
 
 # Collect results in the order: [Perf. CSI, Imperf. CSI]
 ber_list, bler_list = [], []
-for perf_csi, csi_label in [(True, "Perf. CSI"), (False, "Imperf. CSI")]:
+for perf_csi in [True, False]:
     # Model uses LMMSE internally
     e2e_model = Model(channel_model, perfect_csi=perf_csi)
 
     ber_i, bler_i = ber_plot.simulate(
         e2e_model,
         ebno_dbs=ebno_db,
-        legend=f"LMMSE {csi_label}",
         max_mc_iter=50,
         num_target_block_errors=200,
         batch_size=batch_size,
@@ -62,12 +61,12 @@ bler = np.stack(bler_list, axis=0)
 # Plot BLER only (two curves: Perf./Imperf. CSI)
 os.makedirs("results", exist_ok=True)
 plt.figure()
-for idx, csi_label in enumerate(["Perf. CSI", "Imperf. CSI"]):
+for idx, csi_label in enumerate(["Perfect CSI", "Imperfect CSI"]):
     plt.semilogy(ebno_db, bler[idx], marker="o", linestyle="-", label=f"LMMSE {csi_label}")
 
 plt.xlabel("Eb/N0 [dB]")
 plt.ylabel("BLER")
-plt.title(_cfg.PLOT_TITLE)
+plt.title("PUSCH - BLER vs Eb/N0")
 plt.grid(True, which="both")
 plt.legend()
 
