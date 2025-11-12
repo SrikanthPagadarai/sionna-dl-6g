@@ -31,7 +31,7 @@ os.makedirs("checkpoints", exist_ok=True)
 for direction in directions:
     print(f"\n=== Training direction: {direction} ===")
     
-    system = System(training=True, use_neural_rx=True, direction=direction, num_conv2d_filters=256)
+    system = System(training=True, use_neural_rx=True, direction=direction, num_conv2d_filters=512, num_res_blocks = 12)
     print(type(system), getattr(system, "__class__", None))
     
     # Warm-up call on the SAME instance that we'll train (creates variables deterministically)
@@ -65,25 +65,45 @@ for direction in directions:
     def train_step(batch_size, ebno_vec):
         with tf.GradientTape() as tape:
             loss = system(batch_size, ebno_vec)
-        
-        weights = system.trainable_variables
-        grads = tape.gradient(loss, weights)
-        
-        # Keep structure stable: replace None grads with 0-like tensors
-        safe_grads = [g if g is not None else tf.zeros_like(w) for g, w in zip(grads, weights)]
-        
-        optimizer.apply_gradients(zip(safe_grads, weights))
-        return loss
+        grads = tape.gradient(loss, system.trainable_variables)
+        safe_grads = [g if g is not None else tf.zeros_like(w) 
+                    for g, w in zip(grads, system.trainable_variables)]
+        return loss, safe_grads
+    
+    # Validate iteration alignment    
+    ACCUMULATION_STEPS = 4
+    if start_iteration % ACCUMULATION_STEPS != 0:
+        raise ValueError(
+            f"start_iteration ({start_iteration}) must be a multiple of "
+            f"ACCUMULATION_STEPS ({ACCUMULATION_STEPS}). "
+            f"Use --fresh to start from 0, or train to a multiple of {ACCUMULATION_STEPS}."
+        )
+
+    if target_iteration % ACCUMULATION_STEPS != 0:
+        suggested_target = (target_iteration // ACCUMULATION_STEPS) * ACCUMULATION_STEPS
+        suggested_iterations = suggested_target - start_iteration
+        raise ValueError(
+            f"target_iteration ({target_iteration}) must be a multiple of "
+            f"ACCUMULATION_STEPS ({ACCUMULATION_STEPS}). "
+            f"Use --iterations {suggested_iterations} instead (target: {suggested_target})."
+        )
     
     # Training loop for this direction
+    accumulated_grads = None
     for i in range(start_iteration, target_iteration):
-        ebno_db = rng.uniform(
-            shape=[BATCH_SIZE],
-            minval=EBN0_DB_MIN,
-            maxval=EBN0_DB_MAX,
-            dtype=tf.float32
-        )
-        loss = train_step(tf.constant(BATCH_SIZE, tf.int32), ebno_db)
+        ebno_db = rng.uniform([BATCH_SIZE], EBN0_DB_MIN, EBN0_DB_MAX, tf.float32)
+        loss, grads = train_step(tf.constant(BATCH_SIZE, tf.int32), ebno_db)
+        
+        if accumulated_grads is None:
+            accumulated_grads = [tf.Variable(g, trainable=False) for g in grads]
+        else:
+            for acc_g, g in zip(accumulated_grads, grads):
+                acc_g.assign_add(g)
+        
+        if (i + 1) % ACCUMULATION_STEPS == 0:
+            avg_grads = [g / ACCUMULATION_STEPS for g in accumulated_grads]
+            optimizer.apply_gradients(zip(avg_grads, system.trainable_variables))
+            accumulated_grads = None
         loss_value = float(loss.numpy())
         loss_history.append(loss_value)
         print(f"\r[{direction}] Step {i}/{target_iteration}  Loss: {loss_value:.4f}",

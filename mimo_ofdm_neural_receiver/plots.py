@@ -25,11 +25,11 @@ os.makedirs("results", exist_ok=True)
 for direction in ["uplink", "downlink"]:
     loss = np.load(os.path.join("results", f"loss_{direction}.npy"))
     outfile = os.path.join("results", f"loss_{direction}.png")
-    plt.plot(loss)
-    plt.xlabel("Iteration")
-    plt.ylabel("Loss")
+    plt.semilogy(loss)
+    plt.xlabel("iteration")
+    plt.ylabel("loss (log scale)")
     plt.title(f"Training Loss Curve ({direction})")
-    plt.grid(True)
+    plt.grid(True, which="both", linestyle="--", linewidth=0.5)
     plt.savefig(outfile, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"Saved {direction}-loss plot to {outfile}")
@@ -51,7 +51,7 @@ for direction, outfile in [("uplink", OUTFILE_UPLINK_BER), ("downlink", OUTFILE_
     # baseline plots
     for i in range(len(directions)):
         if directions[i] == direction:
-            label = f"{'perfect CSI' if perfect_csi[i] else 'imperfect CSI'} (baseline)"
+            label = f"{'perfect CSI' if perfect_csi[i] else 'imperfect CSI'}"
             plt.semilogy(ebno_db, ber[i], label=label, marker='o', linestyle='-')
 
     # overlay inference results
@@ -80,7 +80,7 @@ for direction, outfile in [("uplink", OUTFILE_UPLINK_BLER), ("downlink", OUTFILE
     # baseline plots
     for i in range(len(directions)):
         if directions[i] == direction:
-            label = f"{'perfect CSI' if perfect_csi[i] else 'imperfect CSI'} (baseline)"
+            label = f"{'perfect CSI' if perfect_csi[i] else 'imperfect CSI'}"
             plt.semilogy(ebno_db, bler[i], label=label, marker='o', linestyle='-')
 
     # overlay inference results
