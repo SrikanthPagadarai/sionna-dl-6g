@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from sionna.phy.channel import OFDMChannel
+from sionna.phy.channel import OFDMChannel, subcarrier_frequencies, cir_to_ofdm_channel, ApplyOFDMChannel
 from sionna.phy.nr import PUSCHConfig, PUSCHTransmitter, PUSCHReceiver
 from sionna.phy.utils import ebnodb2no
 from sionna.phy.ofdm import LinearDetector
@@ -102,16 +102,18 @@ class PUSCHLinkE2E(tf.keras.Model):
 
         self._pusch_receiver = receiver(pusch_transmitter=self._pusch_transmitter, **receiver_kwargs)
 
-        # Configure the actual channel
-        self._channel = OFDMChannel(
-            self._channel_model,
-            self._pusch_transmitter.resource_grid,
-            normalize_channel=True,
-            return_channel=True,
-        )
-
-        if self._training:
+        # configure pieces that are training-only or otherwise
+        if self._use_autoencoder and self._training:
+            self._frequencies = subcarrier_frequencies(self._pusch_transmitter.resource_grid.fft_size, self._pusch_transmitter.resource_grid.subcarrier_spacing)
+            self._channel_freq = ApplyOFDMChannel(add_awgn=True)
             self._bce = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+        else:
+            self._channel = OFDMChannel(
+                self._channel_model,
+                self._pusch_transmitter.resource_grid,
+                normalize_channel=True,
+                return_channel=True,
+            )
 
     @property
     def trainable_variables(self):
@@ -136,7 +138,12 @@ class PUSCHLinkE2E(tf.keras.Model):
             self._pusch_transmitter._target_coderate,
             self._pusch_transmitter.resource_grid,
         )
-        y, h = self._channel(x, no)
+
+        if self._use_autoencoder and self._training:
+            h = cir_to_ofdm_channel(self._frequencies, *self._channel, normalize=True)
+            y = self._channel_freq(x, h, no)
+        else:
+            y, h = self._channel(x, no)
 
         if self._use_autoencoder and self._training:
             if self._perfect_csi:
