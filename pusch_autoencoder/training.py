@@ -4,6 +4,7 @@ import tensorflow as tf
 from src.cir_manager import CIRManager
 from src.system import PUSCHLinkE2E
 from src.config import Config
+import matplotlib.pyplot as plt
 
 # Get configuration
 _cfg = Config()
@@ -30,6 +31,41 @@ print("  Trainable variable count:", len(model.trainable_variables))
 for v in model.trainable_variables[:5]:
     print("   ", v.name, v.shape)
 
+# Snapshot initial constellation (before training)
+init_const_real = tf.identity(model._pusch_transmitter._points_r)
+init_const_imag = tf.identity(model._pusch_transmitter._points_i)
+
+# ---- Gradient sanity check: one step in eager mode ----
+print("\n=== Single-step gradient sanity check ===")
+
+dbg_batch_size = 4
+dbg_ebno = tf.fill([dbg_batch_size], 10.0)  # arbitrary Eb/N0
+
+tx_vars = model._pusch_transmitter.trainable_variables
+rx_vars = model._pusch_receiver.trainable_variables
+all_vars = tx_vars + rx_vars
+
+with tf.GradientTape() as tape:
+    loss_dbg = model(dbg_batch_size, dbg_ebno)
+
+all_grads = tape.gradient(loss_dbg, all_vars)
+
+# Split gradients back into TX and RX parts
+grads_tx = all_grads[:len(tx_vars)]
+grads_rx = all_grads[len(tx_vars):]
+
+print("\nTransmitter gradients:")
+for v, g in zip(tx_vars, grads_tx):
+    g_norm = 0.0 if g is None else float(tf.norm(g).numpy())
+    print(f"  {v.name:40s} grad_norm = {g_norm:.3e}")
+
+print("\nReceiver gradients:")
+for v, g in zip(rx_vars, grads_rx):
+    g_norm = 0.0 if g is None else float(tf.norm(g).numpy())
+    print(f"  {v.name:40s} grad_norm = {g_norm:.3e}")
+
+print("=== End gradient sanity check ===\n")
+
 ### training
 # parameters
 ebno_db_min = -2.0
@@ -55,9 +91,7 @@ def train_step():
 
 for i in range(num_training_iterations):
     loss = train_step()
-    # Printing periodically the progress
-    if i % 10 == 0:
-        print('Iteration {}/{}  BCE: {:.4f}'.format(i, num_training_iterations, loss.numpy()), end='\r',flush=True)
+    print('Iteration {}/{}  BCE: {:.4f}'.format(i, num_training_iterations, loss.numpy()), end='\r',flush=True)
 
 # Save weights
 os.makedirs("results", exist_ok=True)
@@ -65,3 +99,37 @@ weights_path = os.path.join("results", "PUSCH_autoencoder_weights_conventional_t
 weights = model.get_weights()
 with open(weights_path, 'wb') as f:
     pickle.dump(weights, f)
+
+# ----------------------------------------
+# Constellation before vs after training
+# ----------------------------------------
+# Constellation AFTER training (current model)
+trained_const_real = model._pusch_transmitter._points_r
+trained_const_imag = model._pusch_transmitter._points_i
+
+# Build complex constellations
+const_init = tf.complex(init_const_real, init_const_imag)
+const_trained = tf.complex(trained_const_real, trained_const_imag)
+
+def plot_constellation(ax, const, title):
+    pts = const.numpy()
+    ax.scatter(pts.real, pts.imag, s=20)
+    ax.axhline(0.0, linewidth=0.5)
+    ax.axvline(0.0, linewidth=0.5)
+    ax.set_aspect("equal", "box")
+    ax.grid(True, linestyle="--", linewidth=0.5)
+    ax.set_title(title)
+
+# Make sure results directory exists
+os.makedirs("results", exist_ok=True)
+fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+
+plot_constellation(axes[0], const_init, "Initial constellation")
+plot_constellation(axes[1], const_trained, "Trained constellation")
+
+fig.tight_layout()
+fig_path = os.path.join("results", "constellations_before_after.png")
+plt.savefig(fig_path, dpi=150)
+plt.close(fig)
+
+print(f"\nSaved constellation comparison plot to: {fig_path}")

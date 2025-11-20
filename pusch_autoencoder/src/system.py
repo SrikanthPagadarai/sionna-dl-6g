@@ -105,7 +105,8 @@ class PUSCHLinkE2E(tf.keras.Model):
         # configure pieces that are training-only or otherwise
         if self._use_autoencoder and self._training:
             self._frequencies = subcarrier_frequencies(self._pusch_transmitter.resource_grid.fft_size, self._pusch_transmitter.resource_grid.subcarrier_spacing)
-            self._channel_freq = ApplyOFDMChannel(add_awgn=True)
+            self._channel = ApplyOFDMChannel(add_awgn=True)
+
             self._bce = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         else:
             self._channel = OFDMChannel(
@@ -140,8 +141,20 @@ class PUSCHLinkE2E(tf.keras.Model):
         )
 
         if self._use_autoencoder and self._training:
-            h = cir_to_ofdm_channel(self._frequencies, *self._channel, normalize=True)
-            y = self._channel_freq(x, h, no)
+            a, tau = self._channel_model
+            num_samples = tf.shape(a)[0]
+
+            # Randomly select batch_size number of indices
+            idx = tf.random.shuffle(tf.range(num_samples))[:batch_size]
+
+            # gather the corresponding CIRs
+            a_batch  = tf.gather(a, idx, axis=0)
+            tau_batch = tf.gather(tau, idx, axis=0)
+
+            # cir to frequency-domain channel
+            h = cir_to_ofdm_channel(self._frequencies, a_batch, tau_batch, normalize=True)
+
+            y = self._channel(x, h, no)
         else:
             y, h = self._channel(x, no)
 

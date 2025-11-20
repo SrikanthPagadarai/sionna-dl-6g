@@ -79,6 +79,11 @@ class PUSCHNeuralDetector(Layer):
         self._pusch_num_subcarriers = int(self._cfg.pusch_num_subcarriers)
         self._pusch_num_symbols_per_slot = int(self._cfg.pusch_num_symbols_per_slot)
 
+        # compute data symbol indices
+        all_symbols = list(range(self._pusch_num_symbols_per_slot))
+        pilots = set(self._pusch_pilot_indices)
+        self._data_symbol_indices = [s for s in all_symbols if s not in pilots]
+
         # Static number of data symbols from the resource grid.
         # This is the number of *data-carrying* REs (excluding pilots/guards).
         self._num_data_symbols = None
@@ -172,21 +177,11 @@ class PUSCHNeuralDetector(Layer):
         err_var = tf.cast(err_var, tf.float32)
         no = tf.cast(no, tf.float32)
 
-        ## remove pilot OFDM symbols
-        pilot_idxs = tf.constant(self._pusch_pilot_indices, dtype=tf.int32)
-
-        # mask
-        mask = tf.ones(tf.shape(y)[3], dtype=tf.bool)  # [num_ofdm_symbols]
-        mask = tf.tensor_scatter_nd_update(
-            mask,
-            indices=tf.reshape(pilot_idxs, [-1, 1]),
-            updates=tf.zeros_like(pilot_idxs, dtype=tf.bool),
-        )
-
-        # Use the SAME 1-D mask for all tensors, along their OFDM-symbol axis
-        y = tf.boolean_mask(y, mask, axis=3)       # axis 3 has length 14
-        h_hat = tf.boolean_mask(h_hat, mask, axis=5)   # axis 5 has length 14
-        err_var = tf.boolean_mask(err_var, mask, axis=5)  # axis 5 has length 14
+        # extract data, discard pilots
+        data_idx = tf.constant(self._data_symbol_indices, dtype=tf.int32)
+        y     = tf.gather(y,     data_idx, axis=3)
+        h_hat = tf.gather(h_hat, data_idx, axis=5)
+        err_var = tf.gather(err_var, data_idx, axis=5)
 
         # Dynamic shapes
         B = tf.shape(y)[0]
