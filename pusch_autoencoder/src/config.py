@@ -19,11 +19,11 @@ class Config:
     _num_ue_ant: int = field(init=False, default=4, repr=False)                # UE antennas
     _num_bs_ant: int = field(init=False, default=16, repr=False)               # BS antennas
 
-    _batch_size_cir: int = field(init=False, default=100, repr=False)          # batch for CIR generation
+    _batch_size_cir: int = field(init=False, default=500, repr=False)          # batch for CIR generation
     _target_num_cirs: int = field(init=False, default=5000, repr=False)         # total CIRs to generate
 
     _resource_grid: object = field(init=False, default=None, repr=False)
-    _pusch_pusch_pilot_indices: List[int] = field(init=False, repr=False)
+    _pusch_pilot_indices: List[int] = field(init=False, repr=False)
     _pusch_num_subcarriers: int = field(init=False, default=1, repr=False)
     _pusch_num_symbols_per_slot: int = field(init=False, default=1, repr=False)
 
@@ -77,7 +77,7 @@ class Config:
         self._num_bits_per_symbol = int(modulation_order.numpy())
         self._target_coderate = float(target_coderate.numpy())
 
-        self._pusch_pusch_pilot_indices = [0, 0]
+        self._pusch_pilot_indices = [0, 0]
 
     # get-methods
     @property

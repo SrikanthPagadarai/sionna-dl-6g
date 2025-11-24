@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""
+inference.py
+
+Run BER/BLER simulation for the PUSCH autoencoder with a trained
+PUSCHLinkE2E model:
+
+    perfect_csi = False
+    use_autoencoder = True
+    training = False
+
+Weights are loaded from the file produced by training.py:
+    results/PUSCH_autoencoder_weights_conventional_training
+"""
+
+import os
+import sys
+import pickle
+import numpy as np
+import tensorflow as tf
+from sionna.phy.utils import PlotBER
+
+from src.config import Config
+from src.system import PUSCHLinkE2E
+from src.cir_manager import CIRManager
+
+# ---------------------------------------------------------------------------
+# TensorFlow / GPU setup
+# ---------------------------------------------------------------------------
+# Set GPU device if not already specified
+if os.getenv("CUDA_VISIBLE_DEVICES") is None:
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+# Suppress TensorFlow info/warning logs
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+tf.get_logger().setLevel("ERROR")
+
+# Configure GPU memory growth
+gpus = tf.config.list_physical_devices("GPU")
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+        print(f"GPU configuration error: {e}", file=sys.stderr)
+
+# Disable layout optimizer to avoid ConvLSTM graph cycles at inference time
+tf.config.optimizer.set_experimental_options({"layout_optimizer": False})
+
+
+# ---------------------------------------------------------------------------
+# Helper: build model, load weights, restore constellation
+# ---------------------------------------------------------------------------
+def load_model_weights(model: tf.keras.Model,
+                       weights_path: str,
+                       batch_size: int) -> bool:
+    """
+    Build the model, load weights from a pickle file, and restore the
+    trainable constellation points (if present).
+
+    Returns:
+        True  if weights were successfully loaded,
+        False if the weights file was not found (model left with random init).
+    """
+    # IMPORTANT: Build with the same ebno_db *shape* as in training.py:
+    # training.py uses tf.fill([batch_size], 10.0) for the initial call. :contentReference[oaicite:2]{index=2}
+    ebno_db_build = tf.fill([batch_size], 10.0)
+    _ = model(tf.cast(batch_size, tf.int32), ebno_db_build)
+
+    if not os.path.exists(weights_path):
+        print(
+            f"[WARN] Weights file not found at '{weights_path}'. "
+            "Running inference with randomly initialized weights."
+        )
+        return False
+
+    with open(weights_path, "rb") as f:
+        weights = pickle.load(f)
+    model.set_weights(weights)
+
+    # Restore trainable constellation points if using PUSCHTrainableTransmitter. :contentReference[oaicite:3]{index=3}
+    tx = getattr(model, "_pusch_transmitter", None)
+    if tx is not None and hasattr(tx, "_points_r") and hasattr(tx, "_points_i"):
+        pts = tf.complex(tx._points_r, tx._points_i)
+        if hasattr(tx, "_constellation"):
+            tx._constellation.points = pts
+        print("[INFO] Restored trainable constellation points from TX variables.")
+
+    print(f"[INFO] Loaded weights from '{weights_path}'.")
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Configuration & channel model
+# ---------------------------------------------------------------------------
+_cfg = Config()
+batch_size = _cfg.batch_size
+num_ue = _cfg.num_ue
+num_bs_ant = _cfg.num_bs_ant
+num_ue_ant = _cfg.num_ue_ant
+num_time_steps = _cfg.num_time_steps
+
+cir_manager = CIRManager()
+# Same as training.py: use raw (a, tau) tensors from TFRecord. 
+channel_model = cir_manager.load_from_tfrecord()
+
+# ---------------------------------------------------------------------------
+# Instantiate model (autoencoder, inference mode)
+# ---------------------------------------------------------------------------
+e2e_model = PUSCHLinkE2E(
+    channel_model,
+    perfect_csi=False,
+    use_autoencoder=True,
+    training=False,   # inference mode, but architecture same as in training
+)  # :contentReference[oaicite:5]{index=5}
+
+weights_path = os.path.join("results", "PUSCH_autoencoder_weights_conventional_training")
+_ = load_model_weights(e2e_model, weights_path, batch_size)
+
+# ---------------------------------------------------------------------------
+# Quick functional check (match training ebno_db shape)
+# ---------------------------------------------------------------------------
+ebno_db_test = tf.fill([batch_size], 10.0)  # vector, same shape as training
+b_test, b_hat_test = e2e_model(batch_size, ebno_db_test)
+print("Quick check shapes (autoencoder inference):",
+      b_test.shape, b_hat_test.shape)
+
+
+# ---------------------------------------------------------------------------
+# Wrapper for PlotBER: always pass ebno_db as [batch_size]
+# ---------------------------------------------------------------------------
+def ae_model_for_ber(batch_size, ebno_db):
+    """
+    Adapter so that PlotBER.simulate can pass scalar Eb/N0, while the
+    underlying PUSCHLinkE2E always sees a [batch_size] vector, as in training.
+    """
+    # Convert to tf.float32
+    ebno_db = tf.cast(ebno_db, tf.float32)
+
+    # If scalar, expand to [batch_size]; if already a vector, leave as is.
+    if ebno_db.shape.rank == 0:
+        ebno_vec = tf.fill([batch_size], ebno_db)
+    else:
+        ebno_vec = ebno_db
+
+    # Call your actual model
+    return e2e_model(batch_size, ebno_vec)
+
+# ---------------------------------------------------------------------------
+# BER/BLER Simulation
+# ---------------------------------------------------------------------------
+ebno_db = np.arange(-2, 10, 1)
+
+ber_plot = PlotBER("PUSCH Autoencoder Inference (Trained)")
+
+# NOTE: we pass ae_model_for_ber (the wrapper), not e2e_model directly.
+ber, bler = ber_plot.simulate(
+    ae_model_for_ber,
+    ebno_dbs=ebno_db,
+    max_mc_iter=50,
+    num_target_block_errors=200,
+    batch_size=batch_size,
+    soft_estimates=False,
+    show_fig=False,
+    add_bler=True,
+)
+
+# Ensure NumPy arrays
+if hasattr(ber, "numpy"):
+    ber = ber.numpy()
+if hasattr(bler, "numpy"):
+    bler = bler.numpy()
+
+# ---------------------------------------------------------------------------
+# Save results
+# ---------------------------------------------------------------------------
+os.makedirs("results", exist_ok=True)
+out_path = os.path.join("results", "inference_results.npz")
+
+np.savez(
+    out_path,
+    ebno_db=ebno_db,
+    ber=ber,
+    bler=bler,
+    batch_size=batch_size,
+    num_ue=num_ue,
+    num_bs_ant=num_bs_ant,
+    num_ue_ant=num_ue_ant,
+    num_time_steps=num_time_steps,
+    perfect_csi=False,
+    use_autoencoder=True,
+    training=False,
+)
+
+print(f"Saved autoencoder BER/BLER inference results to {out_path}")

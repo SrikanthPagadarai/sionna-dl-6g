@@ -322,8 +322,6 @@ class PUSCHNeuralDetector(Layer):
             message="ConvLSTM2D output channels must be "
                     "num_streams_total * num_bits_per_symbol",
         )
-
-        tf.print("DEBUG: z shape BEFORE reshaping:", tf.shape(z), summarize=-1)
         
         # [B, H, W, F] -> [B, num_data_symbols, num_streams_total, num_bits_per_symbol]
         z = tf.reshape(

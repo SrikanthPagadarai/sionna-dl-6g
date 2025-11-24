@@ -72,9 +72,10 @@ print("=== End gradient sanity check ===\n")
 ebno_db_min = -2.0
 ebno_db_max = 10.0
 training_batch_size = batch_size
-num_training_iterations = 100
+num_training_iterations = 1000
 
-optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+optimizer_tx = tf.keras.optimizers.Adam(learning_rate=1e-2)   # 100x higher
+optimizer_rx = tf.keras.optimizers.Adam(learning_rate=1e-4)
 
 @tf.function(jit_compile=False)
 def train_step():
@@ -85,9 +86,17 @@ def train_step():
     )
     with tf.GradientTape() as tape:
         loss = model(training_batch_size, ebno_db)
-    weights = model.trainable_variables
-    grads = tape.gradient(loss, weights)
-    optimizer.apply_gradients(zip(grads, weights))
+    
+    tx_vars = model._pusch_transmitter.trainable_variables
+    rx_vars = model._pusch_receiver.trainable_variables
+    
+    grads = tape.gradient(loss, tx_vars + rx_vars)
+    grads_tx = grads[:len(tx_vars)]
+    grads_rx = grads[len(tx_vars):]
+    
+    optimizer_tx.apply_gradients(zip(grads_tx, tx_vars))
+    optimizer_rx.apply_gradients(zip(grads_rx, rx_vars))
+    
     return loss
 
 # store loss values for plotting

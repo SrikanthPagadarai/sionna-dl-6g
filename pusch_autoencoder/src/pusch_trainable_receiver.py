@@ -48,7 +48,7 @@ class PUSCHTrainableReceiver(PUSCHReceiver):
                 #  ...num_ofdm_symbols, fft_size]
                 h = tf.transpose(h, perm=[0,1,5,2,6,3,4])
             h_hat = h
-            err_var = tf.cast(0, dtype=h_hat.dtype.real_dtype)
+            err_var = tf.zeros_like(tf.math.real(h_hat[:, :1, :1, :, :, :, :]))
         else:
             h_hat,err_var = self._channel_estimator(y, no)
 

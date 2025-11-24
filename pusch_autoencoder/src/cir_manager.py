@@ -454,73 +454,105 @@ class CIRManager:
         
         return channel_model
     
-def generate_and_save(self, seed_offsets, tfrecord_dir="../cir_tfrecords", save_radio_map=True):
-    """
-    Generate and save CIR data to TFRecord files.
+    def save_visualization_ue_positions(self, filename="munich_ue_positions.png"):
+        """Render and save the radio map with the current UE positions overlaid."""
+        if self.scene is None or self.rm is None or self.camera is None:
+            raise RuntimeError(
+                "Scene, radio map, or camera not initialized. "
+                "Call setup_scene() and compute_radio_map() first."
+            )
 
-    Args:
-        seed_offsets : int or list[int]
-            - If int → treat as a single seed offset.
-            - If list → generate one file per seed.
-        tfrecord_dir : str
-            Directory where TFRecord files will be saved.
-        save_radio_map : bool
-            If True, saves radio map visualizations.
-    """
-
-    # Normalize input to a list
-    if isinstance(seed_offsets, int):
-        seed_list = [seed_offsets]
-    elif isinstance(seed_offsets, (list, tuple)):
-        seed_list = list(seed_offsets)
-    else:
-        raise ValueError("seed_offsets must be an int or a list/tuple of ints")
-
-    # Prepare scene and radio map
-    self.setup_scene()
-    self.compute_radio_map(save_images=save_radio_map)
-
-    if save_radio_map:
-        self.save_visualization_ue_positions()
-
-    # Ensure output directory exists
-    os.makedirs(tfrecord_dir, exist_ok=True)
-
-    # Track the maximum number of paths across all files
-    max_num_paths_all = 0
-
-    # Generate a file per seed
-    for idx, seed in enumerate(seed_list):
-        print(f"\nGenerating CIR file {idx+1}/{len(seed_list)}  (seed_offset={seed})")
-
-        # Generate CIR data
-        a, tau, max_num_paths = self.generate_cir_data(
-            seed_offset=seed
+        self.scene.render_to_file(
+            camera=self.camera,
+            radio_map=self.rm,
+            rm_vmin=self.rm_vmin_db,
+            clip_at=self.rm_clip_at,
+            resolution=list(self.rm_resolution),
+            filename=filename,
+            num_samples=self.rm_num_samples,
         )
 
-        max_num_paths_all = max(max_num_paths_all, max_num_paths)
+    def generate_and_save(
+        self,
+        seed_offsets,
+        tfrecord_dir="../cir_tfrecords",
+        save_radio_map=True,
+    ):
+        """
+        Generate and save CIR data to TFRecord files.
 
-        print(f"  a.shape={a.shape}, tau.shape={tau.shape}")
-        print(f"  max_num_paths={max_num_paths}")
+        Args:
+            seed_offsets : int or list[int]
+                - If int - treat as a single seed offset.
+                - If list/tuple - generate one file per seed.
+            tfrecord_dir : str
+                Directory (relative to this file) where TFRecord files will be saved.
+            save_radio_map : bool
+                If True, saves radio map and UE-position visualizations.
+        """
+        # Normalize input to a list
+        if isinstance(seed_offsets, (int, np.integer)):
+            seed_list = [int(seed_offsets)]
+        elif isinstance(seed_offsets, (list, tuple, np.ndarray)):
+            seed_list = [int(s) for s in seed_offsets]
+        else:
+            raise ValueError("seed_offsets must be an int or a list/tuple of ints")
 
-        # File name uses the seed value for clarity
-        filename = os.path.join(tfrecord_dir, f"cir_seed_{seed:03d}.tfrecord")
+        # Prepare scene and radio map
+        self.setup_scene()
+        self.compute_radio_map(save_images=save_radio_map)
 
-        self.save_to_tfrecord(a, tau, filename)
+        # Save UE positions visualization (once, after receivers are created)
+        # Note: receivers will be created inside generate_cir_data on the first call.
+        # We’ll call this after that first call so the image includes UEs.
+        # To keep behavior simple, we’ll just mark that we still need to save it.
+        need_ue_viz = save_radio_map
 
-    print(f"\nSuccessfully generated {len(seed_list)} TFRecord files.")
-    print(f"All files saved in '{tfrecord_dir}' directory.")
-    print(f"Global max_num_paths across all seeds = {max_num_paths_all}")
+        # Make output directory relative to this file, consistent with load_from_tfrecord
+        base_dir = os.path.dirname(__file__)
+        cir_dir = os.path.join(base_dir, tfrecord_dir)
+        os.makedirs(cir_dir, exist_ok=True)
+
+        # Track the maximum number of paths across all files
+        max_num_paths_all = 0
+
+        # Generate a file per seed
+        for idx, seed in enumerate(seed_list):
+            print(f"\nGenerating CIR file {idx+1}/{len(seed_list)}  (seed_offset={seed})")
+
+            # Generate CIR data
+            a, tau, max_num_paths = self.generate_cir_data(seed_offset=seed)
+
+            max_num_paths_all = max(max_num_paths_all, max_num_paths)
+
+            print(f"  a.shape={a.shape}, tau.shape={tau.shape}")
+            print(f"  max_num_paths={max_num_paths}")
+
+            # Save UE-position visualization once, after first CIR generation
+            if need_ue_viz:
+                ue_fig = os.path.join(cir_dir, f"munich_ue_positions_seed_{seed:03d}.png")
+                try:
+                    self.save_visualization_ue_positions(filename=ue_fig)
+                    print(f"  Saved UE position visualization to '{ue_fig}'")
+                except Exception as e:
+                    print(f"  Warning: failed to save UE visualization: {e}")
+                need_ue_viz = False
+
+            # File name uses the seed value for clarity
+            filename = os.path.join(cir_dir, f"cir_seed_{seed:03d}.tfrecord")
+
+            self.save_to_tfrecord(a, tau, filename)
+
+        print(f"\nSuccessfully generated {len(seed_list)} TFRecord files.")
+        print(f"All files saved in '{cir_dir}' directory.")
+        print(f"Global max_num_paths across all seeds = {max_num_paths_all}")
+
 
 if __name__ == "__main__":
     print("\n CIR Generation Started")
     try:
-        # Initialize CIRManager
         cir_manager = CIRManager()
-        
-        # Generate and save CIR data
         cir_manager.generate_and_save([1, 2, 3, 10])
-
         print("\n CIR Generation Completed Successfully \n")
     except Exception as e:
         print("\n!!! CIR Generation Failed !!!")
