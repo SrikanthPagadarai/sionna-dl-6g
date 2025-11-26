@@ -60,6 +60,8 @@ class PUSCHTrainableReceiver(PUSCHReceiver):
 
         if self._training:
             # return the LLRs
+            if len(llr.shape) == 4 and llr.shape[2] == 1:
+                llr = tf.squeeze(llr, axis=2)
             return llr
         else:
             # TB Decoding

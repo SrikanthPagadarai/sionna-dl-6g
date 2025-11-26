@@ -13,10 +13,12 @@ from .pusch_neural_detector import PUSCHNeuralDetector
 from .pusch_trainable_receiver import PUSCHTrainableReceiver
 
 class PUSCHLinkE2E(tf.keras.Model):
-    def __init__(self, channel_model, perfect_csi, use_autoencoder=False, training=False):
+    def __init__(self, channel_model, perfect_csi, use_autoencoder=False, training=False, training_mode="conventional"):
         super().__init__()
 
         self._training = training
+        self._training_mode = training_mode
+        self._rl_perturbation_variance = 0.01
 
         self._channel_model = channel_model
         self._perfect_csi = perfect_csi
@@ -66,7 +68,7 @@ class PUSCHLinkE2E(tf.keras.Model):
             pusch_configs.append(pc)
 
         # Create PUSCHTransmitter
-        self._pusch_transmitter = (PUSCHTrainableTransmitter(pusch_configs, output_domain=self._domain, training=self._training)
+        self._pusch_transmitter = (PUSCHTrainableTransmitter(pusch_configs, output_domain=self._domain, training=self._training, training_mode=self._training_mode)
                                    if self._use_autoencoder 
                                    else PUSCHTransmitter(pusch_configs, output_domain=self._domain))
         self._cfg.resource_grid = self._pusch_transmitter.resource_grid
@@ -107,7 +109,7 @@ class PUSCHLinkE2E(tf.keras.Model):
             self._frequencies = subcarrier_frequencies(self._pusch_transmitter.resource_grid.fft_size, self._pusch_transmitter.resource_grid.subcarrier_spacing)
             self._channel = ApplyOFDMChannel(add_awgn=True)
 
-            if self._training:
+            if self._training and self._training_mode == "conventional":
                 self._bce = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         else:
             self._channel = OFDMChannel(
@@ -127,10 +129,10 @@ class PUSCHLinkE2E(tf.keras.Model):
         return vars_
         
     @tf.function(jit_compile=False)
-    def call(self, batch_size, ebno_db):
+    def call(self, batch_size, ebno_db, channel_seed=None):
 
         if self._use_autoencoder:
-            x, b, c = self._pusch_transmitter(batch_size)
+            x_map, x_map_eps, x, b, c = self._pusch_transmitter(batch_size, perturbation_variance=self._rl_perturbation_variance)
         else:
             x, b = self._pusch_transmitter(batch_size)
 
@@ -146,7 +148,14 @@ class PUSCHLinkE2E(tf.keras.Model):
             num_samples = tf.shape(a)[0]
 
             # Randomly select batch_size number of indices
-            idx = tf.random.shuffle(tf.range(num_samples))[:batch_size]
+            if channel_seed is None:
+                # random indices each call
+                idx = tf.random.shuffle(tf.range(num_samples))[:batch_size]
+            else:
+                # Deterministic: one channel index per outer iteration
+                # channel_seed can be Python int or tf scalar
+                ch_idx = tf.math.mod(tf.cast(channel_seed, tf.int32), num_samples)
+                idx = tf.fill([batch_size], ch_idx)
 
             # gather the corresponding CIRs
             a_batch  = tf.gather(a, idx, axis=0)
@@ -160,12 +169,31 @@ class PUSCHLinkE2E(tf.keras.Model):
             y, h = self._channel(x, no)
 
         if self._use_autoencoder and self._training:
-            if self._perfect_csi:
-                llr = self._pusch_receiver(y, no, h)
-            else:
-                llr = self._pusch_receiver(y, no)            
-            loss = self._bce(c, llr)
-            return loss
+            if self._training_mode == "conventional":
+                if self._perfect_csi:
+                    llr = self._pusch_receiver(y, no, h)
+                else:
+                    llr = self._pusch_receiver(y, no)
+                loss = self._bce(c, llr)
+                return loss
+            elif self._training_mode == "rl":
+                # stop gradient
+                y = tf.stop_gradient(y)
+
+                if self._perfect_csi:
+                    llr = self._pusch_receiver(y, no, h)
+                else:
+                    llr = self._pusch_receiver(y, no)
+                bce = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(c, llr), axis=-1) # average over the bits mapped to a same baseband symbol
+                rx_loss = tf.reduce_mean(bce) # Rx loss is the usual average BCE
+                # on the Tx side, the BCE is seen as a feedback from the Rx through which backpropagation is not possible
+                bce = tf.stop_gradient(bce)
+                x_map_eps = tf.stop_gradient(x_map_eps)
+                p = x_map_eps-x_map
+                tx_loss = tf.square(tf.math.real(p)) + tf.square(tf.math.imag(p))
+                tx_loss = -bce[..., tf.newaxis] * tx_loss / self._rl_perturbation_variance
+                tx_loss = tf.reduce_mean(tx_loss)
+                return tx_loss, rx_loss
         else:
             if self._perfect_csi:
                 b_hat = self._pusch_receiver(y, no, h)

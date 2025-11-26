@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Layer, ConvLSTM2D
+from tensorflow.keras.layers import Layer, ConvLSTM2D, Dense
 from sionna.phy.utils import log10
 from .config import Config
 
@@ -86,17 +86,7 @@ class PUSCHNeuralDetector(Layer):
 
         # Static number of data symbols from the resource grid.
         # This is the number of *data-carrying* REs (excluding pilots/guards).
-        self._num_data_symbols = None
-        if hasattr(self._cfg, "resource_grid") and (self._cfg.resource_grid is not None):
-            # PUSCHTransmitter.resource_grid is a Sionna ResourceGrid, which
-            # exposes num_data_symbols (see Sionna docs / examples).
-            self._num_data_symbols = int(self._cfg.resource_grid.num_data_symbols)
-        else:
-            # Fallback for the current setup:
-            # 14 OFDM symbols, len(self._pusch_pilot_indices) pilot-only symbols,
-            # and 192 data subcarriers.
-            # This keeps things working even if resource_grid is not set.
-            self._num_data_symbols = (self._pusch_num_symbols_per_slot - len(self._pusch_pilot_indices)) * self._pusch_num_subcarriers
+        self._num_data_symbols = (self._pusch_num_symbols_per_slot - len(self._pusch_pilot_indices)) * self._pusch_num_subcarriers
 
         # Analytic input channel dimension for z:
         # C_y      = 2 * num_bs * num_bs_ant
@@ -138,6 +128,12 @@ class PUSCHNeuralDetector(Layer):
             name="convlstm_out",
         )
 
+        self._llr_output = Dense(
+            self._num_streams_total * self._num_bits_per_symbol,
+            activation=None,
+            name="llr_output"
+            )
+
     @property
     def trainable_variables(self):
         vars_ = []
@@ -145,6 +141,7 @@ class PUSCHNeuralDetector(Layer):
         for block in self._res_blocks:
             vars_ += block.trainable_variables
         vars_ += self._convlstm_out.trainable_variables
+        vars_ += self._llr_output.trainable_variables
         return vars_
     
     def call(
@@ -245,13 +242,10 @@ class PUSCHNeuralDetector(Layer):
         # 4) noise variance as per-batch feature
         # ==================================
         # no: scalar [] or [B] -> log10 and broadcast to [B, H, W, 1]
-        no = tf.cast(no, tf.float32)
         no = log10(no)
 
         # Shape info
         B = tf.shape(y)[0]
-        num_ofdm_symbols_data = tf.shape(y)[3]     # H
-        num_data_subcarriers = tf.shape(y)[4]      # W
 
         # Broadcast no to [B, H, W, 1]
         # - If no is scalar [], no[..., None, None, None] -> [1,1,1]
@@ -303,6 +297,9 @@ class PUSCHNeuralDetector(Layer):
 
         # Remove dummy spatial dim -> [B, H, W, F]
         z = tf.squeeze(z_seq, axis=3)
+
+        # Output of dense layer
+        z = self._llr_output(z)
 
         # ==================================
         # Reshape to LLRs (dynamic num_data_symbols)
@@ -362,6 +359,6 @@ class PUSCHNeuralDetector(Layer):
                 self._num_streams_per_ue,
                 None,
             ]
-        )
+        )        
 
         return llr
