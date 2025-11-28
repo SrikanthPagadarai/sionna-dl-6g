@@ -1,28 +1,5 @@
-#!/usr/bin/env python3
-"""
-inference.py
-
-Run BER/BLER simulation for the PUSCH autoencoder with a trained
-PUSCHLinkE2E model:
-
-    perfect_csi = False
-    use_autoencoder = True
-    training = False
-
-Weights are loaded from the file produced by training.py:
-    results/PUSCH_autoencoder_weights_conventional_training
-"""
-
 import os
 import sys
-import pickle
-import numpy as np
-import tensorflow as tf
-from sionna.phy.utils import PlotBER
-
-from src.config import Config
-from src.system import PUSCHLinkE2E
-from src.cir_manager import CIRManager
 
 # ---------------------------------------------------------------------------
 # TensorFlow / GPU setup
@@ -47,6 +24,15 @@ if gpus:
 # Disable layout optimizer to avoid ConvLSTM graph cycles at inference time
 tf.config.optimizer.set_experimental_options({"layout_optimizer": False})
 
+import pickle
+import numpy as np
+import tensorflow as tf
+from sionna.phy.utils import PlotBER
+
+from src.config import Config
+from src.system import PUSCHLinkE2E
+from src.cir_manager import CIRManager
+
 
 # ---------------------------------------------------------------------------
 # Helper: build model, load weights, restore constellation
@@ -56,14 +42,13 @@ def load_model_weights(model: tf.keras.Model,
                        batch_size: int) -> bool:
     """
     Build the model, load weights from a pickle file, and restore the
-    trainable constellation points (if present).
+    trainable variables directly.
 
     Returns:
         True  if weights were successfully loaded,
         False if the weights file was not found (model left with random init).
     """
-    # IMPORTANT: Build with the same ebno_db *shape* as in training.py:
-    # training.py uses tf.fill([batch_size], 10.0) for the initial call. :contentReference[oaicite:2]{index=2}
+    # Build model first
     ebno_db_build = tf.fill([batch_size], 10.0)
     _ = model(tf.cast(batch_size, tf.int32), ebno_db_build)
 
@@ -75,16 +60,27 @@ def load_model_weights(model: tf.keras.Model,
         return False
 
     with open(weights_path, "rb") as f:
-        weights = pickle.load(f)
-    model.set_weights(weights)
+        weights_dict = pickle.load(f)
 
-    # Restore trainable constellation points if using PUSCHTrainableTransmitter. :contentReference[oaicite:3]{index=3}
-    tx = getattr(model, "_pusch_transmitter", None)
-    if tx is not None and hasattr(tx, "_points_r") and hasattr(tx, "_points_i"):
+    # Load TX weights
+    tx_vars = model._pusch_transmitter.trainable_variables
+    for var, arr in zip(tx_vars, weights_dict['tx_weights']):
+        var.assign(arr)
+    print(f"[INFO] Restored {len(tx_vars)} TX variables.")
+
+    # Load RX weights
+    rx_vars = model._pusch_receiver.trainable_variables
+    for var, arr in zip(rx_vars, weights_dict['rx_weights']):
+        var.assign(arr)
+    print(f"[INFO] Restored {len(rx_vars)} RX variables.")
+
+    # Sync constellation object if present
+    tx = model._pusch_transmitter
+    if hasattr(tx, "_points_r") and hasattr(tx, "_points_i"):
         pts = tf.complex(tx._points_r, tx._points_i)
         if hasattr(tx, "_constellation"):
             tx._constellation.points = pts
-        print("[INFO] Restored trainable constellation points from TX variables.")
+        print("[INFO] Synced trainable constellation points.")
 
     print(f"[INFO] Loaded weights from '{weights_path}'.")
     return True

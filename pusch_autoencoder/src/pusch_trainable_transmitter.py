@@ -10,16 +10,13 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
         # parent constructor
         super().__init__(*args, **kwargs)
         
-        if self._training:
-            self._setup_training()
+        self._setup_custom_constellation()
     
     @property
     def trainable_variables(self):
-        if self._training:
-            return [self._points_r, self._points_i]
-        return []
+        return [self._points_r, self._points_i]
 
-    def _setup_training(self):
+    def _setup_custom_constellation(self):
         """Setup trainable constellation"""
         # Original QAM constellation used as initialization
         qam_points = Constellation("qam", num_bits_per_symbol=self._num_bits_per_symbol).points
@@ -30,12 +27,12 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
 
         self._points_r = tf.Variable(
             tf.cast(init_r, self.rdtype),
-            trainable=True,
+            trainable=self._training,
             name="constellation_real"
         )
         self._points_i = tf.Variable(
             tf.cast(init_i, self.rdtype),
-            trainable=True,
+            trainable=self._training,
             name="constellation_imag"
         )
 
@@ -50,6 +47,7 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
 
         # Replace the mapper to use our trainable constellation
         self._mapper = Mapper(constellation=self._constellation)
+
     
     def call(self, inputs, perturbation_variance=tf.constant(0.0, tf.float32)):
         """

@@ -6,6 +6,9 @@ from src.system import PUSCHLinkE2E
 from src.config import Config
 import matplotlib.pyplot as plt
 
+import time
+start = time.time()
+
 # Get configuration
 _cfg = Config()
 batch_size = _cfg.batch_size
@@ -13,9 +16,6 @@ batch_size = _cfg.batch_size
 # Build channel model
 cir_manager = CIRManager()
 channel_model = cir_manager.load_from_tfrecord()
-
-# channel_model = (a, tau)
-# channel_model = cir_manager.build_channel_model()
 
 # Instantiate and train the end-to-end system
 ebno_db_test = tf.fill([batch_size], 10.0)
@@ -74,7 +74,7 @@ ebno_db_max = 10.0
 training_batch_size = batch_size
 num_training_iterations = 1000
 
-optimizer_tx = tf.keras.optimizers.Adam(learning_rate=1e-2)   # 100x higher
+optimizer_tx = tf.keras.optimizers.Adam(learning_rate=1e-3)   # 10x higher
 optimizer_rx = tf.keras.optimizers.Adam(learning_rate=1e-4)
 
 @tf.function(jit_compile=False)
@@ -114,15 +114,41 @@ for i in range(num_training_iterations):
         end='\r',
         flush=True
     )
+
+    # Save weights intermittently
+    if (i % 200) == 0:
+        os.makedirs("results", exist_ok=True)
+        save_path = os.path.join(
+            "results",
+            f"PUSCH_autoencoder_weights_iter_{i}"
+        )
+        weights_dict = {
+            'tx_weights': [v.numpy() for v in model._pusch_transmitter.trainable_variables],
+            'rx_weights': [v.numpy() for v in model._pusch_receiver.trainable_variables],
+            'tx_names': [v.name for v in model._pusch_transmitter.trainable_variables],
+            'rx_names': [v.name for v in model._pusch_receiver.trainable_variables],
+        }
+        with open(save_path, 'wb') as f:
+            pickle.dump(weights_dict, f)
+        print(f"\n[Checkpoint] Saved weights at iteration {i} -> {save_path}")
+
 print()  # newline after the loop
 
 
 # Save weights
 os.makedirs("results", exist_ok=True)
 weights_path = os.path.join("results", "PUSCH_autoencoder_weights_conventional_training")
-weights = model.get_weights()
+
+weights_dict = {
+    'tx_weights': [v.numpy() for v in model._pusch_transmitter.trainable_variables],
+    'rx_weights': [v.numpy() for v in model._pusch_receiver.trainable_variables],
+    'tx_names': [v.name for v in model._pusch_transmitter.trainable_variables],
+    'rx_names': [v.name for v in model._pusch_receiver.trainable_variables],
+}
 with open(weights_path, 'wb') as f:
-    pickle.dump(weights, f)
+    pickle.dump(weights_dict, f)
+
+print(f"Saved {len(weights_dict['tx_weights'])} TX and {len(weights_dict['rx_weights'])} RX weight arrays")
 
 # ----------------------------------------
 # Plot training loss vs iteration
@@ -188,3 +214,4 @@ plt.close(fig)
 
 print(f"Saved constellation comparison plot to: {fig_path}")
 
+print("Total time:", time.time() - start, "seconds")
