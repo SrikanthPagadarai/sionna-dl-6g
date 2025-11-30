@@ -552,7 +552,7 @@ if __name__ == "__main__":
     print("\n CIR Generation Started")
     try:
         cir_manager = CIRManager()
-        cir_manager.generate_and_save([1, 2, 3, 10])
+        cir_manager.generate_and_save([0])
         print("\n CIR Generation Completed Successfully \n")
     except Exception as e:
         print("\n!!! CIR Generation Failed !!!")

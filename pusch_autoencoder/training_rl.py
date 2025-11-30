@@ -28,7 +28,7 @@ ebno_db_max = 10.0
 training_batch_size = batch_size
 
 # Number of alternating RL iterations and RX fine-tuning iterations
-num_training_iterations_rl_alt = 1000         # you can increase to 7000 later
+num_training_iterations_rl_alt = 100         # you can increase to 7000 later
 num_training_iterations_rl_finetuning = 300   # you can increase to 3000 later
 
 # --------------------------------------------------
@@ -89,9 +89,9 @@ for v, g in zip(rx_vars, grads_rx):
 
 print("=== End gradient sanity check ===\n")
 
-# --------------------------------------------------
-# Optimizers (separate TX and RX as in cell #9)
-# --------------------------------------------------
+# ----------
+# Optimizers
+# ----------
 optimizer_tx = tf.keras.optimizers.Adam()
 optimizer_rx = tf.keras.optimizers.Adam()
 
@@ -99,7 +99,7 @@ optimizer_rx = tf.keras.optimizers.Adam()
 # One TX training step (RL)
 # --------------------------------------------------
 @tf.function(jit_compile=False)
-def train_tx(channel_seed):
+def train_tx():
     # Sample a batch of SNRs
     ebno_db = tf.random.uniform(
         shape=[training_batch_size],
@@ -112,7 +112,6 @@ def train_tx(channel_seed):
         tx_loss, _ = model(
             training_batch_size,
             ebno_db,
-            channel_seed=channel_seed,
         )
 
     tx_vars = model._pusch_transmitter.trainable_variables
@@ -128,7 +127,7 @@ def train_tx(channel_seed):
 # One RX training step (conventional BCE)
 # --------------------------------------------------
 @tf.function(jit_compile=False)
-def train_rx(channel_seed):
+def train_rx():
     # Sample a batch of SNRs
     ebno_db = tf.random.uniform(
         shape=[training_batch_size],
@@ -141,7 +140,6 @@ def train_rx(channel_seed):
         _, rx_loss = model(
             training_batch_size,
             ebno_db,
-            channel_seed=channel_seed,
         )
 
     rx_vars = model._pusch_receiver.trainable_variables
@@ -164,25 +162,33 @@ print("Starting alternating RL training...")
 for i in range(num_training_iterations_rl_alt):
     # Keep the receiver "ahead" of the transmitter:
     # perform several RX steps per TX step
-    channel_seed = tf.constant(i, dtype=tf.int32)
     rx_loss_val = tf.constant(0.0, dtype=tf.float32)
     for _ in range(10):
-        rx_loss_val = train_rx(channel_seed)
-    tx_loss_val = train_tx(channel_seed)
+        rx_loss_val = train_rx()
+    tx_loss_val = train_tx()
 
     # Log
     rx_loss_history_alt.append(rx_loss_val.numpy())
     tx_loss_history_alt.append(tx_loss_val.numpy())
 
-    print(
-        "Alt Iter {}/{}  RX_BCE {:.4f}  TX_loss {:.4f}".format(
-            i, num_training_iterations_rl_alt,
-            rx_loss_val.numpy(),
-            tx_loss_val.numpy()
-        ),
-        end="\r",
-        flush=True
-    )
+    print("Alt Iter {}/{}  RX_BCE {:.4f}  TX_loss {:.4f}".format(i, num_training_iterations_rl_alt,rx_loss_val.numpy(),tx_loss_val.numpy()),end="\r",flush=True)
+
+    # Save weights intermittently
+    if (i % 20) == 0:
+        os.makedirs("results", exist_ok=True)
+        save_path = os.path.join(
+            "results",
+            f"PUSCH_autoencoder_weights_rl_iter_{i}"
+        )
+        weights_dict = {
+            'tx_weights': [v.numpy() for v in model._pusch_transmitter.trainable_variables],
+            'rx_weights': [v.numpy() for v in model._pusch_receiver.trainable_variables],
+            'tx_names': [v.name for v in model._pusch_transmitter.trainable_variables],
+            'rx_names': [v.name for v in model._pusch_receiver.trainable_variables],
+        }
+        with open(save_path, 'wb') as f:
+            pickle.dump(weights_dict, f)
+        print(f"\n[Checkpoint] Saved weights at iteration {i} -> {save_path}")
 print()  # newline after alternating phase
 
 # --------------------------------------------------
@@ -190,31 +196,26 @@ print()  # newline after alternating phase
 # --------------------------------------------------
 print("Receiver fine-tuning...")
 for i in range(num_training_iterations_rl_finetuning):
-    channel_seed = tf.constant(i, dtype=tf.int32)
-    rx_loss_val = train_rx(channel_seed)
+    rx_loss_val = train_rx()
     rx_loss_history_ft.append(rx_loss_val.numpy())    
-    print(
-        "FT Iter {}/{}  RX_BCE {:.4f}".format(
-            i, num_training_iterations_rl_finetuning,
-            rx_loss_val.numpy()
-        ),
-        end="\r",
-        flush=True
-    )
+    print("FT Iter {}/{}  RX_BCE {:.4f}".format(i, num_training_iterations_rl_finetuning,rx_loss_val.numpy()),end="\r",flush=True)
 print()  # newline after fine-tuning
 
 # --------------------------------------------------
 # Save weights and training curves
 # --------------------------------------------------
 os.makedirs("results", exist_ok=True)
+weights_path = os.path.join("results", "PUSCH_autoencoder_weights_rl_training")
 
-# Save model weights (RL-trained)
-weights_path = os.path.join(
-    "results",
-    "PUSCH_autoencoder_weights_rl_training"
-)
-with open(weights_path, "wb") as f:
-    pickle.dump(model.get_weights(), f)
+weights_dict = {
+    'tx_weights': [v.numpy() for v in model._pusch_transmitter.trainable_variables],
+    'rx_weights': [v.numpy() for v in model._pusch_receiver.trainable_variables],
+    'tx_names': [v.name for v in model._pusch_transmitter.trainable_variables],
+    'rx_names': [v.name for v in model._pusch_receiver.trainable_variables],
+}
+with open(weights_path, 'wb') as f:
+    pickle.dump(weights_dict, f)
+
 print(f"Saved RL-trained weights to: {weights_path}")
 
 # Save loss histories as .npy for later analysis
@@ -263,16 +264,6 @@ plt.figure(figsize=(6, 4))
 
 if tx_loss_history_alt:
     plt.plot(tx_loss_history_alt,label="TX Loss (alt phase)")
-
-# If you later log TX loss during fine-tuning, add it here:
-# if tx_loss_history_ft:
-#     offset = len(tx_loss_history_alt)
-#     plt.plot(
-#         range(offset, offset + len(tx_loss_history_ft)),
-#         tx_loss_history_ft,
-#         label="TX Loss (fine-tune)"
-#     )
-
 plt.xlabel("Logged iteration")
 plt.ylabel("TX Loss")
 plt.title("RL Training: Transmitter Loss")

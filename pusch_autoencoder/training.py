@@ -5,6 +5,7 @@ from src.cir_manager import CIRManager
 from src.system import PUSCHLinkE2E
 from src.config import Config
 import matplotlib.pyplot as plt
+import numpy as np
 
 import time
 start = time.time()
@@ -120,7 +121,7 @@ for i in range(num_training_iterations):
         os.makedirs("results", exist_ok=True)
         save_path = os.path.join(
             "results",
-            f"PUSCH_autoencoder_weights_iter_{i}"
+            f"PUSCH_autoencoder_weights_conv_iter_{i}"
         )
         weights_dict = {
             'tx_weights': [v.numpy() for v in model._pusch_transmitter.trainable_variables],
@@ -135,10 +136,13 @@ for i in range(num_training_iterations):
 print()  # newline after the loop
 
 
-# Save weights
+# Save training loss
 os.makedirs("results", exist_ok=True)
-weights_path = os.path.join("results", "PUSCH_autoencoder_weights_conventional_training")
+loss_path = os.path.join("results", "conventional_training_loss.npy")
 
+# Save weights
+np.save(loss_path, np.array(loss_history))
+weights_path = os.path.join("results", "PUSCH_autoencoder_weights_conventional_training")
 weights_dict = {
     'tx_weights': [v.numpy() for v in model._pusch_transmitter.trainable_variables],
     'rx_weights': [v.numpy() for v in model._pusch_receiver.trainable_variables],
@@ -160,7 +164,7 @@ plt.ylabel("BCE loss")
 plt.title("Training loss vs. iteration")
 plt.grid(True, linestyle="--", linewidth=0.5)
 
-loss_fig_path = os.path.join("results", "training_loss.png")
+loss_fig_path = os.path.join("results", "conv_training_loss.png")
 plt.savefig(loss_fig_path, dpi=150)
 plt.close()
 
@@ -208,7 +212,7 @@ ax.set_ylabel("Quadrature")
 ax.legend()
 
 fig.tight_layout()
-fig_path = os.path.join("results", "constellations_overlaid.png")
+fig_path = os.path.join("results", "constellations_overlaid_conv.png")
 plt.savefig(fig_path, dpi=150)
 plt.close(fig)
 

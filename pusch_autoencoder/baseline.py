@@ -63,8 +63,8 @@ for perf_csi in [True, False]:
     ber_i, bler_i = ber_plot.simulate(
         e2e_model,
         ebno_dbs=ebno_db,
-        max_mc_iter=50,
-        num_target_block_errors=200,
+        max_mc_iter=500,
+        num_target_block_errors=2000,
         batch_size=batch_size,
         soft_estimates=False,
         show_fig=False,

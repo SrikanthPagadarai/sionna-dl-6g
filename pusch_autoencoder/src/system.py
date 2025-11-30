@@ -129,7 +129,7 @@ class PUSCHLinkE2E(tf.keras.Model):
         return vars_
         
     @tf.function(jit_compile=False)
-    def call(self, batch_size, ebno_db, channel_seed=None):
+    def call(self, batch_size, ebno_db):
 
         if self._use_autoencoder:
             x_map, x_map_eps, x, b, c = self._pusch_transmitter(batch_size, perturbation_variance=self._rl_perturbation_variance)
@@ -148,14 +148,7 @@ class PUSCHLinkE2E(tf.keras.Model):
             num_samples = tf.shape(a)[0]
 
             # Randomly select batch_size number of indices
-            if channel_seed is None:
-                # random indices each call
-                idx = tf.random.shuffle(tf.range(num_samples))[:batch_size]
-            else:
-                # Deterministic: one channel index per outer iteration
-                # channel_seed can be Python int or tf scalar
-                ch_idx = tf.math.mod(tf.cast(channel_seed, tf.int32), num_samples)
-                idx = tf.fill([batch_size], ch_idx)
+            idx = tf.random.shuffle(tf.range(num_samples))[:batch_size]
 
             # gather the corresponding CIRs
             a_batch  = tf.gather(a, idx, axis=0)

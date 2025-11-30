@@ -56,10 +56,8 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
         inputs : int or [batch_size, num_layers, tb_size], tf.float32
             Either batch_size (if return_bits=True) or bits tensor (if return_bits=False)
         """
-        if self._training:
-            # Update constellation from trainable weights
-            self._constellation.points = tf.complex(self._points_r,
-                                                    self._points_i)
+        # Update constellation from trainable weights
+        self._constellation.points = tf.complex(self._points_r,self._points_i)
         
         if self._return_bits:
             # inputs defines batch_size

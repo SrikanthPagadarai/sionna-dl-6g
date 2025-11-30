@@ -1,5 +1,6 @@
 import os
 import sys
+import tensorflow as tf
 
 # ---------------------------------------------------------------------------
 # TensorFlow / GPU setup
@@ -26,12 +27,21 @@ tf.config.optimizer.set_experimental_options({"layout_optimizer": False})
 
 import pickle
 import numpy as np
-import tensorflow as tf
 from sionna.phy.utils import PlotBER
 
 from src.config import Config
 from src.system import PUSCHLinkE2E
 from src.cir_manager import CIRManager
+
+
+# ---------------------------------------------------------------------------
+# Mode selection based on CLI argument
+# ---------------------------------------------------------------------------
+if len(sys.argv) != 2 or sys.argv[1] not in ("conventional", "rl"):
+    print("Usage: python inference.py [conventional|rl]")
+    sys.exit(1)
+
+mode = sys.argv[1]
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +120,13 @@ e2e_model = PUSCHLinkE2E(
     training=False,   # inference mode, but architecture same as in training
 )  # :contentReference[oaicite:5]{index=5}
 
-weights_path = os.path.join("results", "PUSCH_autoencoder_weights_conventional_training")
+# Select weights file based on mode
+if mode == "conventional":
+    weights_filename = "PUSCH_autoencoder_weights_conventional_training"
+else:  # mode == "rl"
+    weights_filename = "PUSCH_autoencoder_weights_rl_training"
+
+weights_path = os.path.join("results", weights_filename)
 _ = load_model_weights(e2e_model, weights_path, batch_size)
 
 # ---------------------------------------------------------------------------
@@ -171,7 +187,13 @@ if hasattr(bler, "numpy"):
 # Save results
 # ---------------------------------------------------------------------------
 os.makedirs("results", exist_ok=True)
-out_path = os.path.join("results", "inference_results.npz")
+
+if mode == "conventional":
+    results_filename = "inference_results_conventional.npz"
+else:  # mode == "rl"
+    results_filename = "inference_results_rl.npz"
+
+out_path = os.path.join("results", results_filename)
 
 np.savez(
     out_path,
