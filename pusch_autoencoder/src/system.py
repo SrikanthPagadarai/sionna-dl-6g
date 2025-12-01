@@ -12,13 +12,19 @@ from .pusch_trainable_transmitter import PUSCHTrainableTransmitter
 from .pusch_neural_detector import PUSCHNeuralDetector
 from .pusch_trainable_receiver import PUSCHTrainableReceiver
 
+
 class PUSCHLinkE2E(tf.keras.Model):
-    def __init__(self, channel_model, perfect_csi, use_autoencoder=False, training=False, training_mode="conventional"):
+    def __init__(self, channel_model, perfect_csi, use_autoencoder=False, training=False, 
+                 training_mode="conventional", const_reg_weight=0.5, const_d_min=0.35):
         super().__init__()
 
         self._training = training
         self._training_mode = training_mode
         self._rl_perturbation_variance = 0.01
+        
+        # Constellation regularization parameters
+        self._const_reg_weight = const_reg_weight
+        self._const_d_min = const_d_min
 
         self._channel_model = channel_model
         self._perfect_csi = perfect_csi
@@ -127,6 +133,18 @@ class PUSCHLinkE2E(tf.keras.Model):
         if hasattr(self, "_pusch_receiver"):
             vars_ += list(self._pusch_receiver.trainable_variables)
         return vars_
+    
+    def get_constellation_min_distance(self):
+        """Returns the minimum pairwise distance in the constellation (for monitoring)."""
+        points_r = self._pusch_transmitter._points_r
+        points_i = self._pusch_transmitter._points_i
+        points = tf.stack([points_r, points_i], axis=-1)
+        diff = points[:, tf.newaxis, :] - points[tf.newaxis, :, :]
+        distances = tf.norm(diff, axis=-1)
+        # Mask diagonal
+        mask = 1.0 - tf.eye(tf.shape(points)[0])
+        distances = distances + (1.0 - mask) * 1e6
+        return tf.reduce_min(distances)
         
     @tf.function(jit_compile=False)
     def call(self, batch_size, ebno_db):
@@ -167,8 +185,24 @@ class PUSCHLinkE2E(tf.keras.Model):
                     llr = self._pusch_receiver(y, no, h)
                 else:
                     llr = self._pusch_receiver(y, no)
-                loss = self._bce(c, llr)
+                
+                # Detection loss (BCE)
+                bce_loss = self._bce(c, llr)
+                
+                # Constellation regularization loss to prevent collapse
+                const_reg_loss = constellation_regularization_loss(
+                    self._pusch_transmitter._points_r,
+                    self._pusch_transmitter._points_i,
+                    d_min_weight=1.0,
+                    grid_weight=0.0,
+                    uniformity_weight=0.0,
+                    d_min=self._const_d_min,
+                )
+                
+                # Combined loss
+                loss = bce_loss + self._const_reg_weight * const_reg_loss
                 return loss
+                
             elif self._training_mode == "rl":
                 # stop gradient
                 y = tf.stop_gradient(y)
@@ -186,6 +220,16 @@ class PUSCHLinkE2E(tf.keras.Model):
                 tx_loss = tf.square(tf.math.real(p)) + tf.square(tf.math.imag(p))
                 tx_loss = -bce[..., tf.newaxis] * tx_loss / self._rl_perturbation_variance
                 tx_loss = tf.reduce_mean(tx_loss)
+                
+                # Add constellation regularization to TX loss
+                const_reg_loss = constellation_regularization_loss(
+                    self._pusch_transmitter._points_r,
+                    self._pusch_transmitter._points_i,
+                    d_min_weight=1.0,
+                    d_min=self._const_d_min,
+                )
+                tx_loss = tx_loss + self._const_reg_weight * const_reg_loss
+                
                 return tx_loss, rx_loss
         else:
             if self._perfect_csi:
@@ -193,3 +237,145 @@ class PUSCHLinkE2E(tf.keras.Model):
             else:
                 b_hat = self._pusch_receiver(y, no)
             return b, b_hat
+        
+def min_distance_loss(points_r, points_i, d_min=0.4, margin=0.1):
+    """
+    Penalizes constellation points that are closer than d_min.
+    
+    This is the most effective regularizer to prevent collapse.
+    For 16-QAM with unit average power, the nominal minimum distance
+    is approximately 2/sqrt(10) ≈ 0.632. Setting d_min=0.4 gives some
+    flexibility while preventing full collapse to QPSK.
+    
+    Args:
+        points_r: [num_points] real parts of constellation
+        points_i: [num_points] imaginary parts of constellation
+        d_min: minimum allowed distance between any two points
+        margin: soft margin for the hinge loss
+        
+    Returns:
+        Scalar loss value
+    """
+    points = tf.stack([points_r, points_i], axis=-1)  # [N, 2]
+    
+    # Compute pairwise distances
+    # diff[i,j] = points[i] - points[j]
+    diff = points[:, tf.newaxis, :] - points[tf.newaxis, :, :]  # [N, N, 2]
+    distances = tf.norm(diff, axis=-1)  # [N, N]
+    
+    # Mask out diagonal (self-distances)
+    mask = 1.0 - tf.eye(tf.shape(points)[0])
+    distances = distances * mask + tf.eye(tf.shape(points)[0]) * 1e6  # Large value on diagonal
+    
+    # Hinge loss: penalize distances below d_min
+    violations = tf.nn.relu(d_min + margin - distances)
+    
+    # Average over all pairs (excluding diagonal)
+    num_pairs = tf.cast(tf.shape(points)[0] * (tf.shape(points)[0] - 1), tf.float32)
+    loss = tf.reduce_sum(violations) / num_pairs
+    
+    return loss
+
+
+def grid_structure_loss(points_r, points_i, num_levels=4):
+    """
+    Encourages constellation to maintain a grid-like structure.
+    
+    For 16-QAM, we have 4 levels per dimension: {-3, -1, +1, +3} (normalized).
+    This loss encourages points to cluster near these grid positions.
+    
+    Args:
+        points_r: [num_points] real parts
+        points_i: [num_points] imaginary parts  
+        num_levels: number of amplitude levels per dimension (4 for 16-QAM)
+        
+    Returns:
+        Scalar loss value
+    """
+    # Target grid levels (normalized for unit power 16-QAM)
+    # Standard 16-QAM: {-3, -1, 1, 3} / sqrt(10)
+    scale = tf.sqrt(10.0)
+    grid_levels = tf.constant([-3.0, -1.0, 1.0, 3.0], dtype=tf.float32) / scale
+    
+    def snap_to_grid_loss(coords):
+        # For each coordinate, find distance to nearest grid level
+        coords_expanded = coords[:, tf.newaxis]  # [N, 1]
+        grid_expanded = grid_levels[tf.newaxis, :]  # [1, 4]
+        distances = tf.abs(coords_expanded - grid_expanded)  # [N, 4]
+        min_distances = tf.reduce_min(distances, axis=-1)  # [N]
+        return tf.reduce_mean(min_distances)
+    
+    loss_r = snap_to_grid_loss(points_r)
+    loss_i = snap_to_grid_loss(points_i)
+    
+    return loss_r + loss_i
+
+
+def uniformity_loss(points_r, points_i):
+    """
+    Encourages uniform spacing by maximizing the minimum distance.
+    
+    This is a softer version that pushes points apart without
+    requiring a specific structure.
+    
+    Args:
+        points_r: [num_points] real parts
+        points_i: [num_points] imaginary parts
+        
+    Returns:
+        Scalar loss (negative, to be minimized)
+    """
+    points = tf.stack([points_r, points_i], axis=-1)  # [N, 2]
+    
+    diff = points[:, tf.newaxis, :] - points[tf.newaxis, :, :]
+    distances = tf.norm(diff, axis=-1)
+    
+    # Mask diagonal
+    mask = 1.0 - tf.eye(tf.shape(points)[0])
+    distances = distances + (1.0 - mask) * 1e6
+    
+    # We want to maximize the minimum distance
+    # Equivalent to minimizing negative min distance
+    # Use softmin for differentiability
+    temperature = 0.1
+    softmin = -temperature * tf.reduce_logsumexp(-distances / temperature)
+    
+    return -softmin  # Negative because we want to maximize min distance
+
+
+def constellation_regularization_loss(points_r, points_i, 
+                                       d_min_weight=1.0,
+                                       grid_weight=0.0,
+                                       uniformity_weight=0.0,
+                                       d_min=0.4):
+    """
+    Combined constellation regularization loss.
+    
+    Recommended usage:
+    - For preventing collapse: use d_min_weight=1.0, others=0
+    - For encouraging QAM structure: add grid_weight=0.5
+    - For general spreading: use uniformity_weight=0.5
+    
+    Args:
+        points_r: [num_points] real parts of constellation
+        points_i: [num_points] imaginary parts of constellation
+        d_min_weight: weight for minimum distance loss
+        grid_weight: weight for grid structure loss
+        uniformity_weight: weight for uniformity loss
+        d_min: minimum distance threshold
+        
+    Returns:
+        Combined scalar loss
+    """
+    total_loss = 0.0
+    
+    if d_min_weight > 0:
+        total_loss += d_min_weight * min_distance_loss(points_r, points_i, d_min=d_min)
+    
+    if grid_weight > 0:
+        total_loss += grid_weight * grid_structure_loss(points_r, points_i)
+    
+    if uniformity_weight > 0:
+        total_loss += uniformity_weight * uniformity_loss(points_r, points_i)
+    
+    return total_loss

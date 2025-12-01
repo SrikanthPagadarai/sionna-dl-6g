@@ -1,15 +1,13 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Layer, ConvLSTM2D, Dense, LayerNormalization
+from tensorflow.keras.layers import Layer, Conv2D, Dense, LayerNormalization
+from tensorflow.nn import leaky_relu
 from sionna.phy.utils import log10
 from .config import Config
 
 
-class ConvLSTMResBlock(Layer):
+class Conv2DResBlock(Layer):
     """
-    Residual block built from a ConvLSTM2D layer.
-
-    Input / output shape: [B, T, H, W, C]
-    where T is the time dimension (OFDM symbols).
+    Improved residual block with two convolutions (standard ResNet style).
     """
 
     def __init__(
@@ -22,30 +20,36 @@ class ConvLSTMResBlock(Layer):
         self.filters = int(filters)
         self.kernel_size = kernel_size
 
-        self._convlstm = ConvLSTM2D(
+        self._layer_norm1 = LayerNormalization(axis=-1)
+        self._conv1 = Conv2D(
             filters=self.filters,
             kernel_size=self.kernel_size,
             padding="same",
-            return_sequences=True,
-            name=None if name is None else name + "_convlstm",
         )
-        # Keep original LN behavior (over spatial + channel)
-        self._layer_norm = LayerNormalization(axis=(-1, -2, -3))
+        self._layer_norm2 = LayerNormalization(axis=-1)
+        self._conv2 = Conv2D(
+            filters=self.filters,
+            kernel_size=self.kernel_size,
+            padding="same",
+        )
 
-    def call(self, x, training=None):
-        # x: [B, T, H, W, C]
-        y = self._layer_norm(x)
-        y = self._convlstm(y, training=training)
-        skip = x
-        return y + skip
+    def call(self, x):
+        # Pre-activation ResNet style
+        y = self._layer_norm1(x)
+        y = leaky_relu(y, alpha=0.1)
+        y = self._conv1(y)
+        y = self._layer_norm2(y)
+        y = leaky_relu(y, alpha=0.1)
+        y = self._conv2(y)
+        return x + y
 
 
 class PUSCHNeuralDetector(Layer):
     def __init__(
         self,
         cfg: Config,
-        num_conv2d_filters: int = 64,
-        num_res_blocks: int = 5,
+        num_conv2d_filters: int = 128,
+        num_res_blocks: int = 6,
         kernel_size=(3, 3),
     ):
         super().__init__()
@@ -70,290 +74,228 @@ class PUSCHNeuralDetector(Layer):
         pilots = set(self._pusch_pilot_indices)
         self._data_symbol_indices = [s for s in all_symbols if s not in pilots]
 
-        # Static number of data symbols from the resource grid
-        self._num_data_symbols = (
-            self._pusch_num_symbols_per_slot - len(self._pusch_pilot_indices)
-        ) * self._pusch_num_subcarriers
-
-        # Analytic input channel dimension for z:
-        # C_y      = 2 * num_bs * num_bs_ant
-        # C_h_hat  = 2 * num_bs * num_bs_ant * num_ue * num_streams_per_ue
-        # C_err    =     num_ue * num_streams_per_ue
-        # C_noise  = 1
+        # Compute input feature dimension:
+        # - Matched filter output z_mf: 2 * num_streams_total (real/imag)
+        # - Gram matrix diagonal (signal power): num_streams_total
+        # - Gram matrix off-diagonal (interference): num_streams_total * (num_streams_total - 1)
+        # - Error variance per stream: num_streams_total
+        # - Noise variance: 1
         self._c_in = (
-            2 * self._num_bs * self._num_bs_ant
-            + 2
-            * self._num_bs
-            * self._num_bs_ant
-            * self._num_ue
-            * self._num_streams_per_ue
-            + self._num_ue * self._num_streams_per_ue
-            + 1
+            2 * self._num_streams_total +           # z_mf (matched filter)
+            self._num_streams_total +               # Gram diagonal
+            self._num_streams_total * (self._num_streams_total - 1) +  # Gram off-diag (real only, it's Hermitian)
+            self._num_streams_total +               # err_var
+            1                                       # noise
         )
 
-        # Baseline detector (per-RE MLP → LLR logits)
-        self._baseline_detector = Dense(
-            self._num_streams_total * self._num_bits_per_symbol,
-            name="baseline_llr_head",
-        )
-
-        # Input ConvLSTM2D: maps C_in -> num_conv2d_filters
-        self._convlstm_in = ConvLSTM2D(
-            filters=self.num_conv2d_filters,
-            kernel_size=(1,1),
+        # Baseline: 2-layer MLP with Conv2D (captures local correlations)
+        self._baseline_conv1 = Conv2D(
+            filters=64,
+            kernel_size=(1, 1),
             padding="same",
-            return_sequences=True,
-            name="convlstm_in",
+            activation=None,
+            name="baseline_conv1",
+        )
+        self._baseline_ln = LayerNormalization(axis=-1)
+        self._baseline_conv2 = Conv2D(
+            filters=self._num_streams_total * self._num_bits_per_symbol,
+            kernel_size=(1, 1),
+            padding="same",
+            activation=None,
+            name="baseline_conv2",
         )
 
-        # Residual ConvLSTM blocks
+        # Deep residual network for refinement
+        self._conv2d_in = Conv2D(
+            filters=self.num_conv2d_filters,
+            kernel_size=(3, 3),
+            padding="same",
+            name="conv_in",
+        )
+
         self._res_blocks = [
-            ConvLSTMResBlock(
+            Conv2DResBlock(
                 filters=self.num_conv2d_filters,
                 kernel_size=self.kernel_size,
-                name=f"convlstm_resblock_{i}",
+                name=f"conv_resblock_{i}",
             )
             for i in range(self.num_res_blocks)
         ]
 
-        # Output ConvLSTM2D: maps -> num_streams_total * num_bits_per_symbol
-        self._convlstm_out = ConvLSTM2D(
+        self._conv2d_out = Conv2D(
             filters=self._num_streams_total * self._num_bits_per_symbol,
-            kernel_size=(1,1),
+            kernel_size=(3, 3),
             padding="same",
-            return_sequences=True,
-            name="convlstm_out",
-        )
-
-        # Final dense head on ConvLSTM features
-        self._llr_output = Dense(
-            self._num_streams_total * self._num_bits_per_symbol,
             activation=None,
-            kernel_initializer="glorot_uniform",
-            bias_initializer="zeros",
-            name="llr_output",
+            name="conv_out",
         )
 
     @property
     def trainable_variables(self):
         vars_ = []
-        vars_ += self._baseline_detector.trainable_variables
-        vars_ += self._convlstm_in.trainable_variables
+        vars_ += self._baseline_conv1.trainable_variables
+        vars_ += self._baseline_ln.trainable_variables
+        vars_ += self._baseline_conv2.trainable_variables
+        vars_ += self._conv2d_in.trainable_variables
         for block in self._res_blocks:
             vars_ += block.trainable_variables
-        vars_ += self._convlstm_out.trainable_variables
-        vars_ += self._llr_output.trainable_variables
+        vars_ += self._conv2d_out.trainable_variables
         return vars_
 
-    # ------------------------------------------------------------------
-    # Helper: logits [B, H, W, F] → LLR layout
-    #   [B, num_ue, num_streams_per_ue, num_data_symbols * bits]
-    # ------------------------------------------------------------------
-    def _reshape_logits_to_llr(
-        self, logits: tf.Tensor, num_data_symbols: tf.Tensor
-    ) -> tf.Tensor:
+    def _compute_matched_filter_features(self, y, h_hat, err_var, no):
+        """
+        Compute matched filter output and Gram matrix features.
+        
+        These are the fundamental features that classical MIMO detectors use.
+        By providing them directly, the network doesn't have to learn
+        matrix multiplication from scratch.
+        
+        Args:
+            y: [B, num_bs, num_bs_ant, H, W] complex received signal
+            h_hat: [B, num_bs, num_bs_ant, num_ue, num_streams_per_ue, H, W] complex channel
+            err_var: [B, 1, 1, num_ue, num_streams_per_ue, H, W] real error variance
+            no: [B] or scalar, noise variance
+            
+        Returns:
+            z_mf: [B, H, W, 2*num_streams] matched filter output (real/imag)
+            gram_diag: [B, H, W, num_streams] Gram matrix diagonal
+            gram_offdiag: [B, H, W, num_streams*(num_streams-1)] Gram off-diagonal
+        """
+        B = tf.shape(y)[0]
+        H = tf.shape(y)[3]
+        W = tf.shape(y)[4]
+        
+        # Reshape for matrix operations
+        # y: [B, num_bs * num_bs_ant, H, W] -> [B, H, W, num_bs * num_bs_ant]
+        y_flat = tf.reshape(y, [B, -1, H, W])  # [B, num_rx_ant, H, W]
+        y_flat = tf.transpose(y_flat, [0, 2, 3, 1])  # [B, H, W, num_rx_ant]
+        
+        # h_hat: [B, num_bs, num_bs_ant, num_ue, num_streams_per_ue, H, W]
+        # -> [B, num_rx_ant, num_streams, H, W] -> [B, H, W, num_rx_ant, num_streams]
+        h_flat = tf.reshape(h_hat, [B, -1, self._num_streams_total, H, W])
+        h_flat = tf.transpose(h_flat, [0, 3, 4, 1, 2])  # [B, H, W, num_rx_ant, num_streams]
+        
+        # Matched filter: z_mf = H^H @ y
+        # H^H: [B, H, W, num_streams, num_rx_ant]
+        # y: [B, H, W, num_rx_ant, 1]
+        h_conj_t = tf.transpose(tf.math.conj(h_flat), [0, 1, 2, 4, 3])  # [B, H, W, num_streams, num_rx_ant]
+        y_col = y_flat[..., tf.newaxis]  # [B, H, W, num_rx_ant, 1]
+        z_mf = tf.squeeze(tf.matmul(h_conj_t, y_col), axis=-1)  # [B, H, W, num_streams]
+        
+        # Split into real/imag
+        z_mf_real = tf.math.real(z_mf)
+        z_mf_imag = tf.math.imag(z_mf)
+        z_mf_feats = tf.concat([z_mf_real, z_mf_imag], axis=-1)  # [B, H, W, 2*num_streams]
+        
+        # Gram matrix: G = H^H @ H
+        # G: [B, H, W, num_streams, num_streams]
+        gram = tf.matmul(h_conj_t, h_flat)  # [B, H, W, num_streams, num_streams]
+        
+        # Diagonal elements (real, since Hermitian)
+        gram_diag = tf.math.real(tf.linalg.diag_part(gram))  # [B, H, W, num_streams]
+        
+        # Off-diagonal elements (flattened, taking real part since |G_ij| matters for interference)
+        # We'll take the magnitude of off-diagonal elements
+        mask = 1.0 - tf.eye(self._num_streams_total, dtype=tf.float32)
+        mask = mask[tf.newaxis, tf.newaxis, tf.newaxis, :, :]  # [1, 1, 1, S, S]
+        gram_masked = gram * tf.cast(mask, gram.dtype)
+        gram_offdiag = tf.abs(gram_masked)  # Magnitude of interference terms
+        # Flatten off-diagonal: [B, H, W, num_streams * num_streams] but we need to remove diagonal
+        gram_offdiag_flat = tf.reshape(gram_offdiag, [B, H, W, -1])
+        # Remove zeros (diagonal positions) - simpler to just keep all for now
+        # Actually, let's just use the upper triangle to avoid redundancy
+        indices = []
+        for i in range(self._num_streams_total):
+            for j in range(self._num_streams_total):
+                if i != j:
+                    indices.append(i * self._num_streams_total + j)
+        gram_offdiag_feats = tf.gather(gram_offdiag_flat, indices, axis=-1)
+        
+        return z_mf_feats, gram_diag, gram_offdiag_feats
+
+    def _reshape_logits_to_llr(self, logits, num_data_symbols):
         """
         logits: [B, H, W, F] with F = num_streams_total * num_bits_per_symbol
-        num_data_symbols: scalar tf.int32 = H * W
         """
-        # Sanity check on channels
-        F = tf.shape(logits)[-1]
-        tf.debugging.assert_equal(
-            F,
-            self._num_streams_total * self._num_bits_per_symbol,
-            message=(
-                "Logit channels must be num_streams_total * num_bits_per_symbol"
-            ),
-        )
-
         B = tf.shape(logits)[0]
-
-        # [B, H, W, F] -> [B, num_data_symbols, num_streams_total, num_bits_per_symbol]
+        
         logits = tf.reshape(
             logits,
-            [
-                B,
-                num_data_symbols,
-                self._num_streams_total,
-                self._num_bits_per_symbol,
-            ],
+            [B, num_data_symbols, self._num_streams_total, self._num_bits_per_symbol]
         )
-
-        # -> [B, num_data_symbols, num_ue, num_streams_per_ue, bits]
         logits = tf.reshape(
             logits,
-            [
-                B,
-                num_data_symbols,
-                self._num_ue,
-                self._num_streams_per_ue,
-                self._num_bits_per_symbol,
-            ],
+            [B, num_data_symbols, self._num_ue, self._num_streams_per_ue, self._num_bits_per_symbol]
         )
-
-        # Reorder to [B, num_ue, num_streams_per_ue, num_data_symbols, bits]
         logits = tf.transpose(logits, [0, 2, 3, 1, 4])
-
-        # Flatten last two dims -> [B, num_ue, num_streams_per_ue, num_data_symbols * bits]
         llr = tf.reshape(
             logits,
-            [
-                B,
-                self._num_ue,
-                self._num_streams_per_ue,
-                num_data_symbols * self._num_bits_per_symbol,
-            ],
+            [B, self._num_ue, self._num_streams_per_ue, num_data_symbols * self._num_bits_per_symbol]
         )
-
-        # Static UE/stream dims
         llr.set_shape([None, self._num_ue, self._num_streams_per_ue, None])
         return llr
 
-    def call(
-        self,
-        y: tf.Tensor,
-        h_hat: tf.Tensor,
-        err_var: tf.Tensor,
-        no: tf.Tensor,
-        training=None,
-    ) -> tf.Tensor:
+    def call(self, y, h_hat, err_var, no, training=None):
         """
-        PUSCH Neural MIMO-OFDM Detector.
-
-        Input shapes:
-          y      : [B, num_bs, num_bs_ant, num_ofdm_symbols(=14), num_data_subcarriers]
-          h_hat  : [B, num_bs, num_bs_ant, num_ue, num_streams_per_ue,
-                    num_ofdm_symbols(=14), num_data_subcarriers]
-          err_var: [B, 1, 1, num_ue, num_streams_per_ue,
-                    num_ofdm_symbols(=14), num_data_subcarriers]
-          no     : scalar [] or [B], noise variance.
-
-        Output:
-          llr    : [B, num_ue, num_streams_per_ue,
-                    num_data_symbols * num_bits_per_symbol]
-                    where num_data_symbols = num_ofdm_symbols_data * num_data_subcarriers
+        PUSCH Neural MIMO-OFDM Detector with matched filter features.
         """
-        # Ensure dtypes
         y = tf.cast(y, tf.complex64)
         h_hat = tf.cast(h_hat, tf.complex64)
         err_var = tf.cast(err_var, tf.float32)
         no = tf.cast(no, tf.float32)
 
-        # ---------------------------------------------------------
-        # Mask pilots: select only data-carrying OFDM symbols
-        # ---------------------------------------------------------
+        # Mask pilots
         data_idx = tf.constant(self._data_symbol_indices, dtype=tf.int32)
         y = tf.gather(y, data_idx, axis=3)
         h_hat = tf.gather(h_hat, data_idx, axis=5)
         err_var = tf.gather(err_var, data_idx, axis=5)
 
-        # Dynamic shapes
         B = tf.shape(y)[0]
-        num_bs = tf.shape(y)[1]
-        num_bs_ant = tf.shape(y)[2]
-        H = tf.shape(y)[3]  # num_ofdm_symbols_data
-        W = tf.shape(y)[4]  # num_data_subcarriers
+        H = tf.shape(y)[3]
+        W = tf.shape(y)[4]
         num_data_symbols = H * W
 
-        # ================================
-        # 1) y features (per BS, per ant)
-        # ================================
-        y_real = tf.math.real(y)  # [B, num_bs, num_bs_ant, H, W]
-        y_imag = tf.math.imag(y)
-        y_stack = tf.stack([y_real, y_imag], axis=-1)  # [..., 2]
-
-        # -> [B, H, W, num_bs, num_bs_ant, 2]
-        y_stack = tf.transpose(y_stack, [0, 3, 4, 1, 2, 5])
-
-        # -> [B, H, W, num_bs * num_bs_ant * 2]
-        y_feats = tf.reshape(
-            y_stack,
-            [B, H, W, num_bs * num_bs_ant * 2],
+        # === Compute matched filter features ===
+        z_mf_feats, gram_diag, gram_offdiag = self._compute_matched_filter_features(
+            y, h_hat, err_var, no
         )
 
-        # ==========================================
-        # 2) h_hat features (keep BS/ant, UE, stream)
-        # ==========================================
-        # h_hat: [B, num_bs, num_bs_ant, num_ue, num_streams_per_ue, H, W]
-        h_real = tf.math.real(h_hat)
-        h_imag = tf.math.imag(h_hat)
-        h_stack = tf.stack([h_real, h_imag], axis=-1)
-        # -> [B, H, W, num_bs, num_bs_ant, num_ue, num_streams_per_ue, 2]
-        h_stack = tf.transpose(h_stack, [0, 5, 6, 1, 2, 3, 4, 7])
-        # Flatten non-spatial dims into channels
-        h_feats = tf.reshape(
-            h_stack, [B, H, W, -1]
-        )
-
-        # ===========================
-        # 3) err_var features
-        # ===========================
-        # err_var: [B, 1, 1, num_ue, num_streams_per_ue, H, W]
+        # Error variance features
         err_var_t = tf.squeeze(err_var, axis=[1, 2])  # [B, num_ue, streams, H, W]
         err_feats = tf.transpose(err_var_t, [0, 3, 4, 1, 2])  # [B, H, W, num_ue, streams]
-        err_feats = tf.reshape(
-            err_feats,
-            [B, H, W, self._num_ue * self._num_streams_per_ue],
-        )
+        err_feats = tf.reshape(err_feats, [B, H, W, self._num_streams_total])
 
-        # ==================================
-        # 4) noise variance as per-batch feature
-        # ==================================
-        # no: scalar [] or [B] -> log10 and broadcast to [B, H, W, 1]
-        no = log10(no)
+        # Noise variance feature
+        no_log = log10(no + 1e-10)
         no_expanded = tf.broadcast_to(
-            no[..., tf.newaxis, tf.newaxis, tf.newaxis],  # [] or [B] -> [B,1,1,1]
-            [B, H, W, 1],
+            no_log[..., tf.newaxis, tf.newaxis, tf.newaxis],
+            [B, H, W, 1]
         )
 
-        # ==================================
-        # Build feature tensor z: [B, H, W, C_in]
-        # ==================================
-        z = tf.concat([y_feats, h_feats, err_feats, no_expanded], axis=-1)
+        # === Build feature tensor ===
+        z = tf.concat([
+            z_mf_feats,      # Matched filter output (critical!)
+            gram_diag,       # Signal power per stream
+            gram_offdiag,    # Interference structure
+            err_feats,       # Channel estimation error
+            no_expanded,     # Noise level
+        ], axis=-1)
         z = tf.cast(z, tf.float32)
-        z.set_shape([None, None, None, self._c_in])  # static C_in
 
-        # ==================================
-        # Baseline LLR head (per-RE MLP)
-        # ==================================
-        # z: [B, H, W, C_in] -> logits_baseline: [B, H, W, out_dim]
-        logits_baseline = self._baseline_detector(z)
-        logits_baseline = tf.cast(logits_baseline, tf.float32)
+        # === Baseline detector (2-layer MLP with 1x1 convs) ===
+        baseline = self._baseline_conv1(z)
+        baseline = self._baseline_ln(baseline)
+        baseline = leaky_relu(baseline, alpha=0.1)
+        logits_baseline = self._baseline_conv2(baseline)
+        llr_baseline = self._reshape_logits_to_llr(logits_baseline, num_data_symbols)
 
-        llr_baseline = self._reshape_logits_to_llr(
-            logits_baseline, num_data_symbols
-        )
-
-        # ==================================
-        # ConvLSTM2D stack with residuals
-        # ==================================
-        # ConvLSTM2D expects [B, T, rows, cols, C]
-        # use T=H, rows=W, cols=1
-        z_seq = tf.expand_dims(z, axis=3)  # [B, H, W, 1, C_in]
-
-        # Input ConvLSTM2D: [B, H, W, 1, num_conv2d_filters]
-        z_seq = self._convlstm_in(z_seq, training=training)
-
-        # Residual ConvLSTM blocks
+        # === Deep residual refinement ===
+        z_feat = self._conv2d_in(z)
         for block in self._res_blocks:
-            z_seq = block(z_seq, training=training)
+            z_feat = block(z_feat)
+        logits_residual = self._conv2d_out(z_feat)
+        llr_residual = self._reshape_logits_to_llr(logits_residual, num_data_symbols)
 
-        # Output ConvLSTM2D:
-        # [B, H, W, 1, num_streams_total * num_bits_per_symbol]
-        z_seq = self._convlstm_out(z_seq, training=training)
-
-        # Remove dummy spatial dim -> [B, H, W, F]
-        z_out = tf.squeeze(z_seq, axis=3)
-
-        # Final dense head on ConvLSTM features
-        logits_residual = self._llr_output(z_out)
-
-        llr_residual = self._reshape_logits_to_llr(
-            logits_residual, num_data_symbols
-        )
-
-        # ==================================
-        # Overall LLR: baseline + residual
-        # ==================================
+        # === Combined output ===
         llr = llr_baseline + llr_residual
         return llr

@@ -15,7 +15,7 @@ _cfg = Config()
 batch_size = _cfg.batch_size  # same as in training.py
 
 cir_manager = CIRManager()
-channel_model = cir_manager.load_from_tfrecord()
+channel_model = cir_manager.load_from_tfrecord(group_for_mumimo=True)
 
 # --------------------------------------------------
 # RL training configuration (analogous to cell #9)
@@ -28,8 +28,7 @@ ebno_db_max = 10.0
 training_batch_size = batch_size
 
 # Number of alternating RL iterations and RX fine-tuning iterations
-num_training_iterations_rl_alt = 100         # you can increase to 7000 later
-num_training_iterations_rl_finetuning = 300   # you can increase to 3000 later
+num_training_iterations_rl_alt = 10000         # you can increase to 7000 later
 
 # --------------------------------------------------
 # Build RL-based end-to-end model
@@ -92,8 +91,8 @@ print("=== End gradient sanity check ===\n")
 # ----------
 # Optimizers
 # ----------
-optimizer_tx = tf.keras.optimizers.Adam()
-optimizer_rx = tf.keras.optimizers.Adam()
+optimizer_tx = tf.keras.optimizers.Adam(learning_rate=5e-4)
+optimizer_rx = tf.keras.optimizers.Adam(learning_rate=1e-3)
 
 # --------------------------------------------------
 # One TX training step (RL)
@@ -156,14 +155,13 @@ def train_rx():
 # --------------------------------------------------
 rx_loss_history_alt = []
 tx_loss_history_alt = []
-rx_loss_history_ft = []
 
 print("Starting alternating RL training...")
 for i in range(num_training_iterations_rl_alt):
     # Keep the receiver "ahead" of the transmitter:
     # perform several RX steps per TX step
     rx_loss_val = tf.constant(0.0, dtype=tf.float32)
-    for _ in range(10):
+    for _ in range(5):
         rx_loss_val = train_rx()
     tx_loss_val = train_tx()
 
@@ -174,7 +172,7 @@ for i in range(num_training_iterations_rl_alt):
     print("Alt Iter {}/{}  RX_BCE {:.4f}  TX_loss {:.4f}".format(i, num_training_iterations_rl_alt,rx_loss_val.numpy(),tx_loss_val.numpy()),end="\r",flush=True)
 
     # Save weights intermittently
-    if (i % 20) == 0:
+    if (i % 1000) == 0:
         os.makedirs("results", exist_ok=True)
         save_path = os.path.join(
             "results",
@@ -190,16 +188,6 @@ for i in range(num_training_iterations_rl_alt):
             pickle.dump(weights_dict, f)
         print(f"\n[Checkpoint] Saved weights at iteration {i} -> {save_path}")
 print()  # newline after alternating phase
-
-# --------------------------------------------------
-# Fine-tuning of the receiver only (as in cell #9)
-# --------------------------------------------------
-print("Receiver fine-tuning...")
-for i in range(num_training_iterations_rl_finetuning):
-    rx_loss_val = train_rx()
-    rx_loss_history_ft.append(rx_loss_val.numpy())    
-    print("FT Iter {}/{}  RX_BCE {:.4f}".format(i, num_training_iterations_rl_finetuning,rx_loss_val.numpy()),end="\r",flush=True)
-print()  # newline after fine-tuning
 
 # --------------------------------------------------
 # Save weights and training curves
@@ -227,25 +215,12 @@ np.save(
     os.path.join("results", "rl_tx_loss_alt.npy"),
     np.array(tx_loss_history_alt, dtype=np.float32)
 )
-np.save(
-    os.path.join("results", "rl_rx_loss_finetune.npy"),
-    np.array(rx_loss_history_ft, dtype=np.float32)
-)
 
 # --------------------------------------------------
 # Optional: simple plot of RX loss vs iteration
 # --------------------------------------------------
 plt.figure(figsize=(6, 4))
-if rx_loss_history_alt:
-    plt.plot(rx_loss_history_alt, label="RX BCE (alt phase)")
-if rx_loss_history_ft:
-    # offset fine-tune indices to continue the curve
-    offset = len(rx_loss_history_alt)
-    plt.plot(
-        range(offset, offset + len(rx_loss_history_ft)),
-        rx_loss_history_ft,
-        label="RX BCE (fine-tune)"
-    )
+plt.plot(rx_loss_history_alt, label="RX BCE (alt phase)")
 plt.xlabel("Logged iteration")
 plt.ylabel("RX BCE loss")
 plt.title("RL Training: Receiver Loss")

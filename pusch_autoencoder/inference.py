@@ -108,7 +108,7 @@ num_time_steps = _cfg.num_time_steps
 
 cir_manager = CIRManager()
 # Same as training.py: use raw (a, tau) tensors from TFRecord. 
-channel_model = cir_manager.load_from_tfrecord()
+channel_model = cir_manager.load_from_tfrecord(group_for_mumimo=True)
 
 # ---------------------------------------------------------------------------
 # Instantiate model (autoencoder, inference mode)

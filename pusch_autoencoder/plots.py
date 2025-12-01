@@ -17,16 +17,17 @@ if not os.path.exists(results_path):
         f"{results_path} not found. "
         "Run `python3 baseline.py` first to generate BER/BLER results."
     )
+conv_inf_results_path = os.path.join("results", "inference_results_conventional.npz")
 
 data = np.load(results_path)
+conv_inf_data = np.load(conv_inf_results_path)
 ebno_db = data["ebno_db"]
-bler = data["bler"]  # shape [2, len(ebno_db)]
+bler = data["bler"]
+conv_inf_bler = conv_inf_data["bler"]
 
-# Plot BLER (same style as original baseline.py)
-os.makedirs("results", exist_ok=True)
-
+# Plot BLER
 plt.figure()
-for idx, csi_label in enumerate(["Perfect CSI", "Imperfect CSI"]):
+for idx, csi_label in enumerate(["(Perfect CSI)", "(Imperfect CSI)"]):
     plt.semilogy(
         ebno_db,
         bler[idx],
@@ -34,7 +35,7 @@ for idx, csi_label in enumerate(["Perfect CSI", "Imperfect CSI"]):
         linestyle="-",
         label=f"LMMSE {csi_label}",
     )
-
+plt.semilogy(ebno_db,conv_inf_bler,marker="o",linestyle="-",label=f"Neural MIMO Detector (Imperfect CSI, SGD training)")
 plt.xlabel("Eb/N0 [dB]")
 plt.ylabel("BLER")
 plt.title("PUSCH - BLER vs Eb/N0")

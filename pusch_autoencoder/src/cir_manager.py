@@ -352,15 +352,15 @@ class CIRManager:
         
         print(f"  Saved {len(a)} samples to {filename}")
     
-    def load_from_tfrecord(self, tfrecord_dir="../cir_tfrecords"):
+    def load_from_tfrecord(self, tfrecord_dir="../cir_tfrecords", group_for_mumimo=False):
         """Load CIR data from TFRecord files.
         
         Args:
             tfrecord_dir: Directory containing TFRecord files
             
         Returns:
-            all_a: Concatenated CIR coefficients
-            all_tau: Concatenated delay values
+            all_a: Concatenated CIR coefficients with shape [num_samples, 1, num_rx_ant, num_ue, num_tx_ant, num_paths, num_time_steps]
+            all_tau: Concatenated delay values with shape [num_samples, 1, num_ue, num_paths]
         """
         cir_dir = os.path.join(os.path.dirname(__file__), tfrecord_dir)
         cir_files = tf.io.gfile.glob(os.path.join(cir_dir, "*.tfrecord"))
@@ -404,7 +404,27 @@ class CIRManager:
         all_a = tf.concat(all_a, axis=0)
         all_tau = tf.concat(all_tau, axis=0)
         all_a = tf.expand_dims(all_a, axis=1)
-        all_tau = tf.expand_dims(all_tau, axis=1)
+        all_tau = tf.expand_dims(all_tau, axis=1)        
+    
+        if group_for_mumimo:
+            # Group num_ue individual CIRs into MU-MIMO samples
+            num_ue = self.num_ue  # 4
+            num_samples = tf.shape(all_a)[0]
+            num_mu_samples = num_samples // num_ue
+            
+            # Truncate to multiple of num_ue
+            all_a = all_a[:num_mu_samples * num_ue]
+            all_tau = all_tau[:num_mu_samples * num_ue]
+            
+            # a: [N*4, 1, 16, 1, 4, 51, 14] -> [N, 1, 16, 4, 4, 51, 14]
+            all_a = tf.reshape(all_a, [num_mu_samples, num_ue, 1, 16, 1, 4, 51, 14])
+            all_a = tf.squeeze(all_a, axis=4)  # [N, 4, 1, 16, 4, 51, 14]
+            all_a = tf.transpose(all_a, [0, 2, 3, 1, 4, 5, 6])  # [N, 1, 16, 4, 4, 51, 14]
+            
+            # tau: [N*4, 1, 1, 51] -> [N, 1, 4, 51]
+            all_tau = tf.reshape(all_tau, [num_mu_samples, num_ue, 1, 1, 51])
+            all_tau = tf.squeeze(all_tau, axis=3)  # [N, 4, 1, 51]
+            all_tau = tf.transpose(all_tau, [0, 2, 1, 3])  # [N, 1, 4, 51]
         
         return all_a, all_tau
     

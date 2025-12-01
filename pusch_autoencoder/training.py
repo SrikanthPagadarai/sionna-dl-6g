@@ -16,7 +16,7 @@ batch_size = _cfg.batch_size
 
 # Build channel model
 cir_manager = CIRManager()
-channel_model = cir_manager.load_from_tfrecord()
+channel_model = cir_manager.load_from_tfrecord(group_for_mumimo=True)
 
 # Instantiate and train the end-to-end system
 ebno_db_test = tf.fill([batch_size], 10.0)
@@ -73,32 +73,53 @@ print("=== End gradient sanity check ===\n")
 ebno_db_min = -2.0
 ebno_db_max = 10.0
 training_batch_size = batch_size
-num_training_iterations = 1000
+num_training_iterations = 50000
 
-optimizer_tx = tf.keras.optimizers.Adam(learning_rate=1e-3)   # 10x higher
-optimizer_rx = tf.keras.optimizers.Adam(learning_rate=1e-4)
+lr_schedule_tx = tf.keras.optimizers.schedules.CosineDecay(
+    initial_learning_rate=1e-3,
+    decay_steps=num_training_iterations,
+    alpha=0.01  # final LR = 1e-5
+)
+lr_schedule_rx = tf.keras.optimizers.schedules.CosineDecay(
+    initial_learning_rate=1e-4,
+    decay_steps=num_training_iterations,
+    alpha=0.01  # final LR = 1e-6
+)
+
+optimizer_tx = tf.keras.optimizers.Adam(learning_rate=lr_schedule_tx, clipnorm=1.0)
+optimizer_rx = tf.keras.optimizers.Adam(learning_rate=lr_schedule_rx, clipnorm=1.0)
+
+accumulation_steps = 4
 
 @tf.function(jit_compile=False)
 def train_step():
-    ebno_db = tf.random.uniform(
-        shape=[training_batch_size],
-        minval=ebno_db_min,
-        maxval=ebno_db_max
-    )
-    with tf.GradientTape() as tape:
-        loss = model(training_batch_size, ebno_db)
+    accumulated_grads = [tf.zeros_like(v) for v in (tx_vars + rx_vars)]
+    total_loss = 0.0
     
-    tx_vars = model._pusch_transmitter.trainable_variables
-    rx_vars = model._pusch_receiver.trainable_variables
+    for _ in range(accumulation_steps):
+        ebno_db = tf.random.uniform(
+            shape=[training_batch_size],
+            minval=ebno_db_min,
+            maxval=ebno_db_max
+        )
+        with tf.GradientTape() as tape:
+            loss = model(training_batch_size, ebno_db)
+        
+        grads = tape.gradient(loss, tx_vars + rx_vars)
+        accumulated_grads = [ag + g for ag, g in zip(accumulated_grads, grads)]
+        total_loss += loss
     
-    grads = tape.gradient(loss, tx_vars + rx_vars)
-    grads_tx = grads[:len(tx_vars)]
-    grads_rx = grads[len(tx_vars):]
+    # Average gradients
+    accumulated_grads = [g / accumulation_steps for g in accumulated_grads]
+    avg_loss = total_loss / accumulation_steps
+    
+    grads_tx = accumulated_grads[:len(tx_vars)]
+    grads_rx = accumulated_grads[len(tx_vars):]
     
     optimizer_tx.apply_gradients(zip(grads_tx, tx_vars))
     optimizer_rx.apply_gradients(zip(grads_rx, rx_vars))
     
-    return loss
+    return avg_loss
 
 # store loss values for plotting
 loss_history = []
@@ -117,7 +138,7 @@ for i in range(num_training_iterations):
     )
 
     # Save weights intermittently
-    if (i % 200) == 0:
+    if (i % 5000) == 0:
         os.makedirs("results", exist_ok=True)
         save_path = os.path.join(
             "results",
