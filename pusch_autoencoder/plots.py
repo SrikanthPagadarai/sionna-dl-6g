@@ -35,7 +35,7 @@ for idx, csi_label in enumerate(["(Perfect CSI)", "(Imperfect CSI)"]):
         linestyle="-",
         label=f"LMMSE {csi_label}",
     )
-plt.semilogy(ebno_db,conv_inf_bler,marker="o",linestyle="-",label=f"Neural MIMO Detector (Imperfect CSI, SGD training)")
+plt.semilogy(ebno_db,conv_inf_bler,marker="o",linestyle="-",label=f"Neural MIMO Detector (Imperfect CSI, SGD)")
 plt.xlabel("Eb/N0 [dB]")
 plt.ylabel("BLER")
 plt.title("PUSCH - BLER vs Eb/N0")

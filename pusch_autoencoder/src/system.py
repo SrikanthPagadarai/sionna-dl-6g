@@ -15,7 +15,7 @@ from .pusch_trainable_receiver import PUSCHTrainableReceiver
 
 class PUSCHLinkE2E(tf.keras.Model):
     def __init__(self, channel_model, perfect_csi, use_autoencoder=False, training=False, 
-                 training_mode="conventional", const_reg_weight=0.5, const_d_min=0.35):
+                 training_mode="conventional", const_reg_weight=0.1, const_d_min=0.35):
         super().__init__()
 
         self._training = training
@@ -104,11 +104,12 @@ class PUSCHLinkE2E(tf.keras.Model):
         if self._perfect_csi:
             receiver_kwargs["channel_estimator"] = "perfect"
 
-        # enable/disable training
+        # enable/disable training and pass _pusch_transmitter
         if self._use_autoencoder:
             receiver_kwargs["training"] = training
+            receiver_kwargs["pusch_transmitter"] = self._pusch_transmitter
 
-        self._pusch_receiver = receiver(pusch_transmitter=self._pusch_transmitter, **receiver_kwargs)
+        self._pusch_receiver = receiver(**receiver_kwargs)
 
         # configure differentiable channel for autoencoder, iterable channel for baseline
         if self._use_autoencoder:
@@ -134,11 +135,15 @@ class PUSCHLinkE2E(tf.keras.Model):
             vars_ += list(self._pusch_receiver.trainable_variables)
         return vars_
     
+    @property
+    def constellation(self):
+        """Returns normalized constellation points (complex) from transmitter."""
+        return self._pusch_transmitter.get_normalized_constellation()
+    
     def get_constellation_min_distance(self):
         """Returns the minimum pairwise distance in the constellation (for monitoring)."""
-        points_r = self._pusch_transmitter._points_r
-        points_i = self._pusch_transmitter._points_i
-        points = tf.stack([points_r, points_i], axis=-1)
+        points = tf.stack([tf.math.real(self.constellation), 
+                          tf.math.imag(self.constellation)], axis=-1)
         diff = points[:, tf.newaxis, :] - points[tf.newaxis, :, :]
         distances = tf.norm(diff, axis=-1)
         # Mask diagonal
@@ -191,8 +196,8 @@ class PUSCHLinkE2E(tf.keras.Model):
                 
                 # Constellation regularization loss to prevent collapse
                 const_reg_loss = constellation_regularization_loss(
-                    self._pusch_transmitter._points_r,
-                    self._pusch_transmitter._points_i,
+                    tf.math.real(self.constellation),
+                    tf.math.imag(self.constellation),
                     d_min_weight=1.0,
                     grid_weight=0.0,
                     uniformity_weight=0.0,
@@ -223,8 +228,8 @@ class PUSCHLinkE2E(tf.keras.Model):
                 
                 # Add constellation regularization to TX loss
                 const_reg_loss = constellation_regularization_loss(
-                    self._pusch_transmitter._points_r,
-                    self._pusch_transmitter._points_i,
+                    tf.math.real(self.constellation),
+                    tf.math.imag(self.constellation),
                     d_min_weight=1.0,
                     d_min=self._const_d_min,
                 )
@@ -277,7 +282,7 @@ def min_distance_loss(points_r, points_i, d_min=0.4, margin=0.1):
     return loss
 
 
-def grid_structure_loss(points_r, points_i, num_levels=4):
+def grid_structure_loss(points_r, points_i):
     """
     Encourages constellation to maintain a grid-like structure.
     
@@ -287,7 +292,6 @@ def grid_structure_loss(points_r, points_i, num_levels=4):
     Args:
         points_r: [num_points] real parts
         points_i: [num_points] imaginary parts  
-        num_levels: number of amplitude levels per dimension (4 for 16-QAM)
         
     Returns:
         Scalar loss value

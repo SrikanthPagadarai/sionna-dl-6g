@@ -73,10 +73,10 @@ print("=== End gradient sanity check ===\n")
 ebno_db_min = -2.0
 ebno_db_max = 10.0
 training_batch_size = batch_size
-num_training_iterations = 50000
+num_training_iterations = 5000
 
 lr_schedule_tx = tf.keras.optimizers.schedules.CosineDecay(
-    initial_learning_rate=1e-3,
+    initial_learning_rate=5e-2,
     decay_steps=num_training_iterations,
     alpha=0.01  # final LR = 1e-5
 )
@@ -86,30 +86,33 @@ lr_schedule_rx = tf.keras.optimizers.schedules.CosineDecay(
     alpha=0.01  # final LR = 1e-6
 )
 
-optimizer_tx = tf.keras.optimizers.Adam(learning_rate=lr_schedule_tx, clipnorm=1.0)
-optimizer_rx = tf.keras.optimizers.Adam(learning_rate=lr_schedule_rx, clipnorm=1.0)
+optimizer_tx = tf.keras.optimizers.Adam(learning_rate=lr_schedule_tx)
+optimizer_rx = tf.keras.optimizers.Adam(learning_rate=lr_schedule_rx)
 
-accumulation_steps = 4
+accumulation_steps = 16
 
 @tf.function(jit_compile=False)
+def compute_grads_single():
+    ebno_db = tf.random.uniform(
+        shape=[training_batch_size],
+        minval=ebno_db_min,
+        maxval=ebno_db_max
+    )
+    with tf.GradientTape() as tape:
+        loss = model(training_batch_size, ebno_db)
+    grads = tape.gradient(loss, tx_vars + rx_vars)
+    return loss, grads
+
 def train_step():
     accumulated_grads = [tf.zeros_like(v) for v in (tx_vars + rx_vars)]
     total_loss = 0.0
     
     for _ in range(accumulation_steps):
-        ebno_db = tf.random.uniform(
-            shape=[training_batch_size],
-            minval=ebno_db_min,
-            maxval=ebno_db_max
-        )
-        with tf.GradientTape() as tape:
-            loss = model(training_batch_size, ebno_db)
-        
-        grads = tape.gradient(loss, tx_vars + rx_vars)
+        loss, grads = compute_grads_single()
         accumulated_grads = [ag + g for ag, g in zip(accumulated_grads, grads)]
         total_loss += loss
     
-    # Average gradients
+    # Average
     accumulated_grads = [g / accumulation_steps for g in accumulated_grads]
     avg_loss = total_loss / accumulation_steps
     
@@ -138,7 +141,7 @@ for i in range(num_training_iterations):
     )
 
     # Save weights intermittently
-    if (i % 5000) == 0:
+    if (i % 1000) == 0:
         os.makedirs("results", exist_ok=True)
         save_path = os.path.join(
             "results",
