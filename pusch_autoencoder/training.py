@@ -1,4 +1,5 @@
 import os
+import sys
 import pickle
 import tensorflow as tf
 from src.cir_manager import CIRManager
@@ -9,6 +10,16 @@ import numpy as np
 
 import time
 start = time.time()
+
+# ----------------------------------------
+# Parse command-line argument
+# ----------------------------------------
+if len(sys.argv) != 2 or sys.argv[1] not in ("conventional", "two_phase"):
+    print("Usage: python training.py [conventional|two_phase]")
+    sys.exit(1)
+
+training_mode = sys.argv[1]
+print(f"Training mode: {training_mode}")
 
 # Get configuration
 _cfg = Config()
@@ -40,7 +51,7 @@ init_const_imag = tf.identity(model._pusch_transmitter._points_i)
 print("\n=== Single-step gradient sanity check ===")
 
 dbg_batch_size = 4
-dbg_ebno = tf.fill([dbg_batch_size], 10.0)  # arbitrary Eb/N0
+dbg_ebno = tf.fill([dbg_batch_size], 10.0)
 
 tx_vars = model._pusch_transmitter.trainable_variables
 rx_vars = model._pusch_receiver.trainable_variables
@@ -78,12 +89,12 @@ num_training_iterations = 5000
 lr_schedule_tx = tf.keras.optimizers.schedules.CosineDecay(
     initial_learning_rate=5e-2,
     decay_steps=num_training_iterations,
-    alpha=0.01  # final LR = 1e-5
+    alpha=0.01
 )
 lr_schedule_rx = tf.keras.optimizers.schedules.CosineDecay(
     initial_learning_rate=1e-4,
     decay_steps=num_training_iterations,
-    alpha=0.01  # final LR = 1e-6
+    alpha=0.01
 )
 
 optimizer_tx = tf.keras.optimizers.Adam(learning_rate=lr_schedule_tx)
@@ -103,7 +114,8 @@ def compute_grads_single():
     grads = tape.gradient(loss, tx_vars + rx_vars)
     return loss, grads
 
-def train_step():
+def compute_accumulated_grads():
+    """Compute accumulated gradients without applying them."""
     accumulated_grads = [tf.zeros_like(v) for v in (tx_vars + rx_vars)]
     total_loss = 0.0
     
@@ -119,19 +131,33 @@ def train_step():
     grads_tx = accumulated_grads[:len(tx_vars)]
     grads_rx = accumulated_grads[len(tx_vars):]
     
-    optimizer_tx.apply_gradients(zip(grads_tx, tx_vars))
-    optimizer_rx.apply_gradients(zip(grads_rx, rx_vars))
-    
-    return avg_loss
+    return avg_loss, grads_tx, grads_rx
 
 # store loss values for plotting
 loss_history = []
 
+print(f"Starting {training_mode} training for {num_training_iterations} iterations...")
 
 for i in range(num_training_iterations):
-    loss = train_step()
-    loss_value = float(loss.numpy())
+    avg_loss, grads_tx, grads_rx = compute_accumulated_grads()
+    loss_value = float(avg_loss.numpy())
     loss_history.append(loss_value)
+    
+    if training_mode == "conventional":
+        # Update both TX and RX every iteration
+        optimizer_tx.apply_gradients(zip(grads_tx, tx_vars))
+        optimizer_rx.apply_gradients(zip(grads_rx, rx_vars))
+    
+    elif training_mode == "two_phase":
+        # 10 RX updates (with fresh gradients each time)
+        for _ in range(10):
+            _, _, grads_rx_fresh = compute_accumulated_grads()
+            optimizer_rx.apply_gradients(zip(grads_rx_fresh, rx_vars))
+        
+        # 1 TX update (with fresh gradient after RX has adapted)
+        _, grads_tx_fresh, _ = compute_accumulated_grads()
+        optimizer_tx.apply_gradients(zip(grads_tx_fresh, tx_vars))
+    
     print(
         'Iteration {}/{}  BCE: {:.4f}'.format(
             i + 1, num_training_iterations, loss_value
@@ -145,13 +171,17 @@ for i in range(num_training_iterations):
         os.makedirs("results", exist_ok=True)
         save_path = os.path.join(
             "results",
-            f"PUSCH_autoencoder_weights_conv_iter_{i}"
+            f"PUSCH_autoencoder_weights_{training_mode}_iter_{i}"
         )
+
+        # Get normalized constellation
+        normalized_const = model._pusch_transmitter.get_normalized_constellation().numpy()
         weights_dict = {
             'tx_weights': [v.numpy() for v in model._pusch_transmitter.trainable_variables],
             'rx_weights': [v.numpy() for v in model._pusch_receiver.trainable_variables],
             'tx_names': [v.name for v in model._pusch_transmitter.trainable_variables],
             'rx_names': [v.name for v in model._pusch_receiver.trainable_variables],
+            'normalized_constellation': normalized_const,
         }
         with open(save_path, 'wb') as f:
             pickle.dump(weights_dict, f)
@@ -159,19 +189,22 @@ for i in range(num_training_iterations):
 
 print()  # newline after the loop
 
-
 # Save training loss
 os.makedirs("results", exist_ok=True)
-loss_path = os.path.join("results", "conventional_training_loss.npy")
+loss_path = os.path.join("results", f"{training_mode}_training_loss.npy")
 
 # Save weights
 np.save(loss_path, np.array(loss_history))
-weights_path = os.path.join("results", "PUSCH_autoencoder_weights_conventional_training")
+weights_path = os.path.join("results", f"PUSCH_autoencoder_weights_{training_mode}_training")
+
+# Get normalized constellation
+normalized_const = model._pusch_transmitter.get_normalized_constellation().numpy()
 weights_dict = {
     'tx_weights': [v.numpy() for v in model._pusch_transmitter.trainable_variables],
     'rx_weights': [v.numpy() for v in model._pusch_receiver.trainable_variables],
     'tx_names': [v.name for v in model._pusch_transmitter.trainable_variables],
     'rx_names': [v.name for v in model._pusch_receiver.trainable_variables],
+    'normalized_constellation': normalized_const,
 }
 with open(weights_path, 'wb') as f:
     pickle.dump(weights_dict, f)
@@ -185,10 +218,10 @@ plt.figure(figsize=(6, 4))
 plt.plot(loss_history)
 plt.xlabel("Iteration")
 plt.ylabel("BCE loss")
-plt.title("Training loss vs. iteration")
+plt.title(f"Training loss vs. iteration ({training_mode})")
 plt.grid(True, linestyle="--", linewidth=0.5)
 
-loss_fig_path = os.path.join("results", "conv_training_loss.png")
+loss_fig_path = os.path.join("results", f"{training_mode}_training_loss.png")
 plt.savefig(loss_fig_path, dpi=150)
 plt.close()
 
@@ -230,13 +263,13 @@ ax.axhline(0.0, linewidth=0.5)
 ax.axvline(0.0, linewidth=0.5)
 ax.set_aspect("equal", "box")
 ax.grid(True, linestyle="--", linewidth=0.5)
-ax.set_title("Constellation: initial vs trained")
+ax.set_title(f"Constellation: initial vs trained ({training_mode})")
 ax.set_xlabel("In-phase")
 ax.set_ylabel("Quadrature")
 ax.legend()
 
 fig.tight_layout()
-fig_path = os.path.join("results", "constellations_overlaid_conv.png")
+fig_path = os.path.join("results", f"constellations_overlaid_{training_mode}.png")
 plt.savefig(fig_path, dpi=150)
 plt.close(fig)
 

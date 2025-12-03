@@ -15,13 +15,11 @@ from .pusch_trainable_receiver import PUSCHTrainableReceiver
 
 class PUSCHLinkE2E(tf.keras.Model):
     def __init__(self, channel_model, perfect_csi, use_autoencoder=False, training=False, 
-                 training_mode="conventional", const_reg_weight=0.1, const_d_min=0.35):
+                 const_reg_weight=0.1, const_d_min=0.25):
         super().__init__()
 
         self._training = training
-        self._training_mode = training_mode
-        self._rl_perturbation_variance = 0.01
-        
+
         # Constellation regularization parameters
         self._const_reg_weight = const_reg_weight
         self._const_d_min = const_d_min
@@ -74,7 +72,7 @@ class PUSCHLinkE2E(tf.keras.Model):
             pusch_configs.append(pc)
 
         # Create PUSCHTransmitter
-        self._pusch_transmitter = (PUSCHTrainableTransmitter(pusch_configs, output_domain=self._domain, training=self._training, training_mode=self._training_mode)
+        self._pusch_transmitter = (PUSCHTrainableTransmitter(pusch_configs, output_domain=self._domain, training=self._training)
                                    if self._use_autoencoder 
                                    else PUSCHTransmitter(pusch_configs, output_domain=self._domain))
         self._cfg.resource_grid = self._pusch_transmitter.resource_grid
@@ -98,7 +96,7 @@ class PUSCHLinkE2E(tf.keras.Model):
 
         # configure receiver
         receiver = PUSCHTrainableReceiver if self._use_autoencoder else PUSCHReceiver
-        receiver_kwargs = {"mimo_detector": detector,"input_domain": self._domain}
+        receiver_kwargs = {"mimo_detector": detector,"input_domain": self._domain, "pusch_transmitter": self._pusch_transmitter}
 
         # perfect/imperfect CSI
         if self._perfect_csi:
@@ -107,8 +105,7 @@ class PUSCHLinkE2E(tf.keras.Model):
         # enable/disable training and pass _pusch_transmitter
         if self._use_autoencoder:
             receiver_kwargs["training"] = training
-            receiver_kwargs["pusch_transmitter"] = self._pusch_transmitter
-
+        
         self._pusch_receiver = receiver(**receiver_kwargs)
 
         # configure differentiable channel for autoencoder, iterable channel for baseline
@@ -116,7 +113,7 @@ class PUSCHLinkE2E(tf.keras.Model):
             self._frequencies = subcarrier_frequencies(self._pusch_transmitter.resource_grid.fft_size, self._pusch_transmitter.resource_grid.subcarrier_spacing)
             self._channel = ApplyOFDMChannel(add_awgn=True)
 
-            if self._training and self._training_mode == "conventional":
+            if self._training:
                 self._bce = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         else:
             self._channel = OFDMChannel(
@@ -155,7 +152,7 @@ class PUSCHLinkE2E(tf.keras.Model):
     def call(self, batch_size, ebno_db):
 
         if self._use_autoencoder:
-            x_map, x_map_eps, x, b, c = self._pusch_transmitter(batch_size, perturbation_variance=self._rl_perturbation_variance)
+            x_map, x, b, c = self._pusch_transmitter(batch_size)
         else:
             x, b = self._pusch_transmitter(batch_size)
 
@@ -185,57 +182,27 @@ class PUSCHLinkE2E(tf.keras.Model):
             y, h = self._channel(x, no)
 
         if self._use_autoencoder and self._training:
-            if self._training_mode == "conventional":
-                if self._perfect_csi:
-                    llr = self._pusch_receiver(y, no, h)
-                else:
-                    llr = self._pusch_receiver(y, no)
-                
-                # Detection loss (BCE)
-                bce_loss = self._bce(c, llr)
-                
-                # Constellation regularization loss to prevent collapse
-                const_reg_loss = constellation_regularization_loss(
-                    tf.math.real(self.constellation),
-                    tf.math.imag(self.constellation),
-                    d_min_weight=1.0,
-                    grid_weight=0.0,
-                    uniformity_weight=0.0,
-                    d_min=self._const_d_min,
-                )
-                
-                # Combined loss
-                loss = bce_loss + self._const_reg_weight * const_reg_loss
-                return loss
-                
-            elif self._training_mode == "rl":
-                # stop gradient
-                y = tf.stop_gradient(y)
-
-                if self._perfect_csi:
-                    llr = self._pusch_receiver(y, no, h)
-                else:
-                    llr = self._pusch_receiver(y, no)
-                bce = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(c, llr), axis=-1) # average over the bits mapped to a same baseband symbol
-                rx_loss = tf.reduce_mean(bce) # Rx loss is the usual average BCE
-                # on the Tx side, the BCE is seen as a feedback from the Rx through which backpropagation is not possible
-                bce = tf.stop_gradient(bce)
-                x_map_eps = tf.stop_gradient(x_map_eps)
-                p = x_map_eps-x_map
-                tx_loss = tf.square(tf.math.real(p)) + tf.square(tf.math.imag(p))
-                tx_loss = -bce[..., tf.newaxis] * tx_loss / self._rl_perturbation_variance
-                tx_loss = tf.reduce_mean(tx_loss)
-                
-                # Add constellation regularization to TX loss
-                const_reg_loss = constellation_regularization_loss(
-                    tf.math.real(self.constellation),
-                    tf.math.imag(self.constellation),
-                    d_min_weight=1.0,
-                    d_min=self._const_d_min,
-                )
-                tx_loss = tx_loss + self._const_reg_weight * const_reg_loss
-                
-                return tx_loss, rx_loss
+            if self._perfect_csi:
+                llr = self._pusch_receiver(y, no, h)
+            else:
+                llr = self._pusch_receiver(y, no)
+            
+            # Detection loss (BCE)
+            bce_loss = self._bce(c, llr)
+            
+            # Constellation regularization loss to prevent collapse
+            const_reg_loss = constellation_regularization_loss(
+                tf.math.real(self.constellation),
+                tf.math.imag(self.constellation),
+                d_min_weight=1.0,
+                grid_weight=0.0,
+                uniformity_weight=0.0,
+                d_min=self._const_d_min,
+            )
+            
+            # Combined loss
+            loss = bce_loss + self._const_reg_weight * const_reg_loss
+            return loss
         else:
             if self._perfect_csi:
                 b_hat = self._pusch_receiver(y, no, h)

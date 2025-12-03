@@ -37,8 +37,8 @@ from src.cir_manager import CIRManager
 # ---------------------------------------------------------------------------
 # Mode selection based on CLI argument
 # ---------------------------------------------------------------------------
-if len(sys.argv) != 2 or sys.argv[1] not in ("conventional", "rl"):
-    print("Usage: python inference.py [conventional|rl]")
+if len(sys.argv) != 2 or sys.argv[1] not in ("conventional", "two_phase"):
+    print("Usage: python inference.py [conventional|two_phase]")
     sys.exit(1)
 
 mode = sys.argv[1]
@@ -123,8 +123,8 @@ e2e_model = PUSCHLinkE2E(
 # Select weights file based on mode
 if mode == "conventional":
     weights_filename = "PUSCH_autoencoder_weights_conventional_training"
-else:  # mode == "rl"
-    weights_filename = "PUSCH_autoencoder_weights_rl_training"
+else:  # mode == "two_phase"
+    weights_filename = "PUSCH_autoencoder_weights_two_phase_training"
 
 weights_path = os.path.join("results", weights_filename)
 _ = load_model_weights(e2e_model, weights_path, batch_size)
@@ -190,8 +190,8 @@ os.makedirs("results", exist_ok=True)
 
 if mode == "conventional":
     results_filename = "inference_results_conventional.npz"
-else:  # mode == "rl"
-    results_filename = "inference_results_rl.npz"
+else:  # mode == "two_phase"
+    results_filename = "inference_results_two_phase.npz"
 
 out_path = os.path.join("results", results_filename)
 

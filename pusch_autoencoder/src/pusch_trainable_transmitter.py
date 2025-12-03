@@ -11,9 +11,8 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
     manual normalization to ensure unit power is maintained during training.
     """
     
-    def __init__(self, *args, training=False, training_mode="conventional", **kwargs):
+    def __init__(self, *args, training=False, **kwargs):
         self._training = training
-        self._training_mode = training_mode
         
         # parent constructor
         super().__init__(*args, **kwargs)
@@ -77,7 +76,7 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
         self._mapper = Mapper(constellation=self._constellation)
 
     
-    def call(self, inputs, perturbation_variance=tf.constant(0.0, tf.float32)):
+    def call(self, inputs):
         """
         Parameters
         ----------
@@ -100,17 +99,8 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
         # Map to constellations
         x_map = self._mapper(c)
 
-        if self._training_mode == "conventional":
-            x_map_eps = x_map
-        elif self._training_mode == "rl":
-            # add perturbation
-            epsilon_r = tf.random.normal(tf.shape(x_map)) * tf.sqrt(0.5 * perturbation_variance)
-            epsilon_i = tf.random.normal(tf.shape(x_map)) * tf.sqrt(0.5 * perturbation_variance)
-            epsilon = tf.complex(epsilon_r, epsilon_i)
-            x_map_eps = x_map + epsilon
-
         # Map to layers
-        x_layer = self._layer_mapper(x_map_eps)
+        x_layer = self._layer_mapper(x_map)
 
         # Apply resource grid mapping
         x_grid = self._resource_grid_mapper(x_layer)
@@ -128,6 +118,6 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
             x = x_pre
 
         if self._return_bits:
-            return x_map, x_map_eps, x, b, c
+            return x_map, x, b, c
         else:
             return x
