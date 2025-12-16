@@ -1,9 +1,13 @@
 [tool.poetry]
 name = "sionna-dl-6g"
 version = "0.1.0"
-package-mode = false
 description = "Deep Learning Demos for B5G/6G Using TensorFlow and Sionna"
 authors = ["Srikanth Pagadarai <srikanth.pagadarai@gmail.com>"]
+readme = "README.md"
+packages = [
+    { include = "mimo_ofdm_neural_receiver" },
+    { include = "pusch_autoencoder" },
+]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"

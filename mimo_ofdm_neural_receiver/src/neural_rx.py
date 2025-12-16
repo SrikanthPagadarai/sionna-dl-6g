@@ -3,10 +3,8 @@ import sionna as sn
 from sionna.phy.fec.ldpc import LDPC5GEncoder, LDPC5GDecoder
 from tensorflow.keras.layers import Layer, Conv2D, LayerNormalization
 from tensorflow.nn import relu
-from typing import Optional
 
 from .config import Config
-from .csi import CSI
 
 
 class ResidualBlock(Layer):
@@ -106,7 +104,8 @@ class NeuralRx(Layer):
         # put antenna dim last: y -> [B, N_sym, N_sc, N_ant]
         y = tf.transpose(y, [0, 2, 3, 1])
 
-        # Robustly make `no` a [tf.shape(y)[0], 1, 1, 1] tensor (works for scalar or [tf.shape(y)[0]])
+        # make `no` a [tf.shape(y)[0], 1, 1, 1] tensor
+        #       (works for scalar or [tf.shape(y)[0]])
         no = tf.reshape(no, [-1])
         no = no + tf.zeros(
             [tf.shape(y)[0]], dtype=no.dtype
@@ -116,7 +115,9 @@ class NeuralRx(Layer):
         # Broadcast to one channel alongside features
         no = tf.broadcast_to(no, [tf.shape(y)[0], tf.shape(y)[1], tf.shape(y)[2], 1])
 
-        # stack: z dimensions - [batch_size, num ofdm symbols, num subcarriers, 2*num rx antennas + 1]
+        # stack:
+        # z dimensions
+        #   - [batch_size, num ofdm symbols, num subcarriers, 2 * num rx antennas + 1]
         z = tf.concat([tf.math.real(y), tf.math.imag(y), no], axis=-1)
 
         # Input conv
@@ -157,69 +158,3 @@ class NeuralRx(Layer):
             b_hat = self._decoder(llr)
 
         return {"llr": llr, "b_hat": b_hat}
-
-
-if __name__ == "__main__":
-    # Minimal shape sanity check for NeuralRx
-    import os
-
-    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
-    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-
-    import tensorflow as tf
-    from sionna.phy.utils import ebnodb2no
-
-    # Choose scenario
-    PERFECT_CSI = True
-    BATCH_SIZE = 4
-    EBN0_DB = 15.0
-
-    # Build config/CSI
-    cfg = Config(perfect_csi=PERFECT_CSI)
-    B = tf.constant(BATCH_SIZE, dtype=tf.int32)
-    csi = CSI(cfg)
-    csi.build(B)
-
-    # Pull some handy dims from the resource grid / config
-    n_sym = cfg.rg.num_ofdm_symbols
-    n_sc = cfg.rg.fft_size
-    num_streams = cfg.rg.num_streams_per_tx  # number of layers/streams
-    bits_per_sym = cfg.num_bits_per_symbol
-
-    # Dummy received signal 'y' (frequency domain, post-OFDM)
-    # Shape convention for NeuralRx input in this repo:
-    #   y: [B, 1, N_streams, N_sym, N_sc] (complex)
-    y_shape = (BATCH_SIZE, 1, num_streams, n_sym, n_sc)
-    y_real = tf.random.normal(y_shape, dtype=tf.float32)
-    y_imag = tf.random.normal(y_shape, dtype=tf.float32)
-    y = tf.complex(y_real, y_imag)
-
-    # Noise power 'no' (scalar). If you prefer per-sample, change to shape [BATCH_SIZE].
-    no = ebnodb2no(
-        tf.constant(EBN0_DB, tf.float32), cfg.num_bits_per_symbol, cfg.coderate, cfg.rg
-    )
-
-    # Create and run NeuralRx
-    nrx = NeuralRx(cfg)
-
-    # Forward pass
-    rx_out = nrx(y, no)  # expected: [B, 1, N_streams, N_sym, N_sc, bits_per_sym]
-
-    # Print a quick summary of shapes
-    print("===== NeuralRx Shape Check =====")
-    print(f"Perfect CSI: {PERFECT_CSI}")
-    print(f"BATCH_SIZE: {BATCH_SIZE}")
-    print(
-        f"RG: N_sym={n_sym}, N_sc={n_sc}, N_streams={num_streams}, bits/sym={int(bits_per_sym)}"
-    )
-    print(f"y shape: {y.shape} (expect [B, 1, N_streams, N_sym, N_sc])")
-    print(
-        f"no shape/value: {no.shape} | {float(tf.reshape(no, [-1])[0]) if tf.size(no)>0 else 'scalar'}"
-    )
-    print(
-        f"NeuralRx output (LLR, RG): {rx_out['llr'].shape} (expect [B, 1, N_streams, (N_sym-n_pilots)*(N_sc-nguard-1)])"
-    )
-
-    # If you want to sanity-peek a slice:
-    print("Sample LLR vector at [0, 0, 0, :]:")
-    print(rx_out["llr"][0, 0, 0, :])

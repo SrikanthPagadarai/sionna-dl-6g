@@ -1,20 +1,20 @@
 import os
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
-import tensorflow as tf
-from typing import Dict, Any, Optional
-from sionna.phy.mapping import BinarySource, Mapper
-from sionna.phy.fec.ldpc import LDPC5GEncoder
-from sionna.phy.ofdm import ResourceGridMapper, RZFPrecoder
-from .config import Config
-from .csi import CSI
+
+import tensorflow as tf  # noqa: E402
+from typing import Dict, Any  # noqa: E402
+from sionna.phy.mapping import BinarySource, Mapper  # noqa: E402
+from sionna.phy.fec.ldpc import LDPC5GEncoder  # noqa: E402
+from sionna.phy.ofdm import ResourceGridMapper  # noqa: E402
+from .config import Config  # noqa: E402
 
 
 class Tx:
     """
     Uses a shared CSI instance (composition) so Tx, Channel, Rx all see the SAME h_freq.
     Pipeline:
-      BinarySource -> LDPC5GEncoder -> Mapper -> ResourceGridMapper -> (optional) RZFPrecoder
+      BinarySource -> LDPC5GEncoder -> Mapper -> ResourceGridMapper
     """
 
     def __init__(self, cfg: Config, channel_coding_off: bool = False):
@@ -45,26 +45,3 @@ class Tx:
         x_rg = self._rg_mapper(x)
 
         return {"b": b, "c": c, "x": x, "x_rg": x_rg}
-
-
-if __name__ == "__main__":
-    """
-    Example usage for standalone TX stage.
-    Creates CSI once, then runs the TX pipeline.
-    """
-    from .csi import CSI
-
-    cfg = Config()
-    B = tf.constant(4, dtype=tf.int32)
-
-    csi = CSI(cfg)
-    h_freq = csi.build(B)
-    tx = Tx(cfg)
-    out = tx(B, h_freq)
-
-    print("\n[TX] Outputs:")
-    for k, v in out.items():
-        if v is not None:
-            print(f"{k:10s}: shape={v.shape}")
-        else:
-            print(f"{k:10s}: None")

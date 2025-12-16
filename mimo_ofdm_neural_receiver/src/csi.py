@@ -2,12 +2,12 @@ import os
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
 
-import sionna.phy
-import tensorflow as tf
-from sionna.phy.channel.tr38901 import CDL, AntennaArray
-from sionna.phy.ofdm import ResourceGrid, RemoveNulledSubcarriers
-from sionna.phy.channel import subcarrier_frequencies, cir_to_ofdm_channel
-from .config import Config
+import sionna.phy  # noqa: E402
+import tensorflow as tf  # noqa: E402
+from sionna.phy.channel.tr38901 import CDL, AntennaArray  # noqa: E402
+from sionna.phy.ofdm import RemoveNulledSubcarriers  # noqa: E402
+from sionna.phy.channel import subcarrier_frequencies, cir_to_ofdm_channel  # noqa: E402
+from .config import Config  # noqa: E402
 
 
 class CSI:

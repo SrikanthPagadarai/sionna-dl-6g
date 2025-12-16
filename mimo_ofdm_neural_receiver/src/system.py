@@ -1,6 +1,5 @@
 import tensorflow as tf
-from typing import Dict, Any
-from sionna.phy.utils import ebnodb2no, compute_ber
+from sionna.phy.utils import ebnodb2no
 from tensorflow.keras import Model
 
 from .config import Config, BitsPerSym, CDLModel
@@ -94,13 +93,13 @@ class System(Model):
         )
 
         tx_out = self._tx(batch_size, h_freq)
-        y_out = self._ch(tx_out["x_rg_tx"], h_freq, no)
+        y_out = self._ch(tx_out["x_rg"], h_freq, no)
 
         rx_to_use = self._neural_rx if self._use_neural_rx else self._rx
         rx_args_to_pass = (
             (y_out["y"], no, batch_size)
             if self._use_neural_rx
-            else (y_out["y"], h_freq, no, tx_out["g"])
+            else (y_out["y"], h_freq, no)
         )
         rx_out = rx_to_use(*rx_args_to_pass)
 
@@ -109,25 +108,3 @@ class System(Model):
             return loss
 
         return tx_out["b"], rx_out["b_hat"]
-
-
-if __name__ == "__main__":
-    import os, tensorflow as tf
-
-    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-    tf.get_logger().setLevel("ERROR")
-
-    system = System(
-        perfect_csi=True,
-        cdl_model="D",
-        delay_spread=300e-9,
-        carrier_frequency=2.6e9,
-        speed=0.0,
-        use_neural_rx=False,
-        name="system",
-    )
-
-    B = tf.constant(4, tf.int32)
-    EbNo = tf.constant(40.0, tf.float32)
-    b, b_hat = system(B, EbNo)
-    tf.print("BER:", compute_ber(b, b_hat))

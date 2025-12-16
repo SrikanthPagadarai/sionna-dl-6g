@@ -20,7 +20,12 @@ class Config:
     Global configuration for one simulation setup.
 
     User-settable properties:
-      - perfect_csi, cdl_model, delay_spread, carrier_frequency, speed, num_bits_per_symbol
+      - perfect_csi
+      - cdl_model
+      - delay_spread
+      - carrier_frequency
+      - speed
+      - num_bits_per_symbol
 
     All other properties are hard-coded and exposed via read-only properties.
     On build(), creates:
@@ -90,7 +95,7 @@ class Config:
             raise AttributeError(
                 f"{name} is immutable (hard-coded PHY/system parameter)."
             )
-        super().__setattr__(name, value)
+        object.__setattr__(self, name, value)
 
     # build/cache objects used across modules
     def build(self) -> "Config":

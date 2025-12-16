@@ -1,6 +1,6 @@
 import tensorflow as tf
-from typing import Dict, Any, Optional
-from sionna.phy.ofdm import LSChannelEstimator, LMMSEEqualizer, ResourceGridDemapper
+from typing import Dict, Any
+from sionna.phy.ofdm import LSChannelEstimator, LMMSEEqualizer
 from sionna.phy.mapping import Demapper
 from sionna.phy.fec.ldpc import LDPC5GEncoder, LDPC5GDecoder
 from .config import Config
@@ -31,7 +31,6 @@ class Rx:
         y: tf.Tensor,
         h_freq: tf.Tensor,
         no: tf.Tensor,
-        g: Optional[tf.Tensor] = None,
     ) -> Dict[str, Any]:
 
         # Perfect vs estimated CSI
@@ -54,38 +53,3 @@ class Rx:
             "llr": llr,
             "b_hat": b_hat,
         }
-
-
-if __name__ == "__main__":
-    # Minimal standalone smoke test for Rx
-    import tensorflow as tf
-    from sionna.phy.utils import ebnodb2no
-    from .config import Config
-    from .csi import CSI
-    from .rx import Rx
-
-    def rand_cplx(shape, dtype=tf.float32):
-        return tf.complex(
-            tf.random.normal(shape, dtype=dtype), tf.random.normal(shape, dtype=dtype)
-        )
-
-    # Setup
-    cfg = Config(perfect_csi=True)
-    B = tf.constant(4, tf.int32)
-    EbNo_dB = tf.constant(10.0, tf.float32)
-
-    csi = CSI(cfg)
-    h_freq = csi.build(B)
-    rx = Rx(cfg, csi)
-
-    # dummy inputs
-    y = rand_cplx((B, 1, cfg.num_bs_ant, cfg.rg.num_ofdm_symbols, cfg.rg.fft_size))
-    g = None
-
-    no = ebnodb2no(EbNo_dB, cfg.num_bits_per_symbol, cfg.coderate, cfg.rg)
-
-    # Run & report
-    out = rx(y, h_freq, no, g)
-    print("\n[RX] Output shapes:")
-    for k, v in out.items():
-        print(f"{k:10s}: {v.shape}")
