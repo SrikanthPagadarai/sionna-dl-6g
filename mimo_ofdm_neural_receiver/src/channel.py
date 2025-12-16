@@ -25,7 +25,7 @@ if __name__ == "__main__":
     from .csi import CSI
     from sionna.phy.utils import ebnodb2no
 
-    cfg = Config(direction="uplink")
+    cfg = Config()
     B = tf.constant(4, dtype=tf.int32)
     EbNo_dB = tf.constant(10.0)
 

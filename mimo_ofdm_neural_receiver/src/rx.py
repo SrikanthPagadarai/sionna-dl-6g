@@ -24,12 +24,7 @@ class Rx:
 
         # Perfect vs estimated CSI
         if self._cfg.perfect_csi:
-            if self._cfg.direction == "uplink":
-                h_hat = self._csi.remove_nulled_scs(h_freq)
-            else:
-                if g is None:
-                    raise ValueError("perfect_csi=True (downlink) requires Tx-provided 'g'.")
-                h_hat = g
+            h_hat = self._csi.remove_nulled_scs(h_freq)
             err_var = tf.cast(0.0, tf.float32)
         else:
             h_hat, err_var = self._ce(y, no)
@@ -54,7 +49,7 @@ if __name__ == "__main__":
         return tf.complex(tf.random.normal(shape, dtype=dtype),tf.random.normal(shape, dtype=dtype))
 
     # Setup
-    cfg = Config(direction="downlink", perfect_csi=True)
+    cfg = Config(perfect_csi=True)
     B = tf.constant(4, tf.int32)
     EbNo_dB = tf.constant(10.0, tf.float32)
 
@@ -63,15 +58,8 @@ if __name__ == "__main__":
     rx = Rx(cfg, csi)
 
     # dummy inputs
-    if cfg.direction == "uplink":
-        y = rand_cplx((B, 1, cfg.num_bs_ant, cfg.rg.num_ofdm_symbols, cfg.rg.fft_size))
-        g = None
-    else:  # downlink
-        y = rand_cplx((B, cfg.rg.num_tx, cfg.rg.num_streams_per_tx, cfg.rg.num_ofdm_symbols, cfg.rg.fft_size))
-        gl, gr = cfg.rg.num_guard_carriers
-        n_sc_eff = cfg.rg.fft_size - gl - gr - 1# if cfg.rg.dc
-        g = rand_cplx((B, cfg.rg.num_tx, cfg.rg.num_streams_per_tx, cfg.rg.num_tx,
-                       cfg.rg.num_streams_per_tx, cfg.rg.num_ofdm_symbols, n_sc_eff))
+    y = rand_cplx((B, 1, cfg.num_bs_ant, cfg.rg.num_ofdm_symbols, cfg.rg.fft_size))
+    g = None
 
     no = ebnodb2no(EbNo_dB, cfg.num_bits_per_symbol, cfg.coderate, cfg.rg)
 

@@ -22,11 +22,6 @@ class Tx:
         self._encoder = LDPC5GEncoder(self._cfg.k, self._cfg.n)
         self._mapper = Mapper(self._cfg.modulation, self._cfg.num_bits_per_symbol)
         self._rg_mapper = ResourceGridMapper(self._cfg.rg)
-
-        self._precoder: Optional[RZFPrecoder] = None
-        if self._cfg.direction == "downlink":
-            self._precoder = RZFPrecoder(self._cfg.rg, self._cfg.sm, return_effective_channel=True)
-
         self._num_streams_per_tx = self._cfg.num_streams_per_tx
 
     @tf.function
@@ -42,13 +37,7 @@ class Tx:
         x = self._mapper(c)
         x_rg = self._rg_mapper(x)
 
-        # If downlink, do precoding using the *shared* h_freq
-        x_rg_tx = x_rg
-        g = None
-        if self._precoder is not None:
-            x_rg_tx, g = self._precoder(x_rg, h_freq)
-
-        return {"b": b, "c": c, "x": x, "x_rg": x_rg, "x_rg_tx": x_rg_tx, "g": g}
+        return {"b": b, "c": c, "x": x, "x_rg": x_rg}
 
 
 if __name__ == "__main__":
@@ -58,7 +47,7 @@ if __name__ == "__main__":
     """
     from .csi import CSI
 
-    cfg = Config(direction="uplink")
+    cfg = Config()
     B = tf.constant(4, dtype=tf.int32)
 
     csi = CSI(cfg)

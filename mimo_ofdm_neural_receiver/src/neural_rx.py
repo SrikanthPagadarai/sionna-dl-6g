@@ -126,13 +126,12 @@ if __name__ == "__main__":
     from sionna.phy.utils import ebnodb2no
 
     # Choose scenario
-    DIRECTION = "downlink"   # "uplink" or "downlink"
     PERFECT_CSI = True
     BATCH_SIZE = 4
     EBN0_DB = 15.0
 
     # Build config/CSI
-    cfg = Config(direction=DIRECTION, perfect_csi=PERFECT_CSI)
+    cfg = Config(perfect_csi=PERFECT_CSI)
     B = tf.constant(BATCH_SIZE, dtype=tf.int32)
     csi = CSI(cfg)
     csi.build(B)
@@ -165,12 +164,12 @@ if __name__ == "__main__":
 
     # Print a quick summary of shapes
     print("===== NeuralRx Shape Check =====")
-    print(f"Direction                 : {DIRECTION}, Perfect CSI: {PERFECT_CSI}")
-    print(f"BATCH_SIZE                : {BATCH_SIZE}")
+    print(f"Perfect CSI: {PERFECT_CSI}")
+    print(f"BATCH_SIZE: {BATCH_SIZE}")
     print(f"RG: N_sym={n_sym}, N_sc={n_sc}, N_streams={num_streams}, bits/sym={int(bits_per_sym)}")
-    print(f"y shape                   : {y.shape} (expect [B, 1, N_streams, N_sym, N_sc])")
-    print(f"no shape/value            : {no.shape} | {float(tf.reshape(no, [-1])[0]) if tf.size(no)>0 else 'scalar'}")
-    print(f"NeuralRx output (LLR, RG) : {rx_out['llr'].shape} (expect [B, 1, N_streams, (N_sym-n_pilots)*(N_sc-nguard-1)])")
+    print(f"y shape: {y.shape} (expect [B, 1, N_streams, N_sym, N_sc])")
+    print(f"no shape/value: {no.shape} | {float(tf.reshape(no, [-1])[0]) if tf.size(no)>0 else 'scalar'}")
+    print(f"NeuralRx output (LLR, RG): {rx_out['llr'].shape} (expect [B, 1, N_streams, (N_sym-n_pilots)*(N_sc-nguard-1)])")
 
     # If you want to sanity-peek a slice:
     print("Sample LLR vector at [0, 0, 0, :]:")

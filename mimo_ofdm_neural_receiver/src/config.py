@@ -1,30 +1,26 @@
 from dataclasses import dataclass, field
-from typing import Literal, Tuple
+from typing import ClassVar, FrozenSet, Literal, Tuple
 from enum import IntEnum
 import numpy as np
 from sionna.phy.mimo import StreamManagement
 from sionna.phy.ofdm import ResourceGrid
 
-Direction = Literal["uplink", "downlink"]
 CDLModel = Literal["A", "B", "C", "D", "E"]
-
 
 class BitsPerSym(IntEnum):
     BPSK  = 1   # 2^1 = 2-QAM
     QPSK  = 2   # 2^2 = 4-QAM
     QAM16 = 4   # 2^4 = 16-QAM
 
-@dataclass
+@dataclass(slots=True)
 class Config:
     """
     Global configuration for one simulation setup.
 
-    User-settable:
-      - direction: "uplink" | "downlink"
-      - perfect_csi: bool (receiver behavior)
-      - cdl_model, delay_spread, carrier_frequency, speed: channel params
+    User-settable properties:
+      - perfect_csi, cdl_model, delay_spread, carrier_frequency, speed, num_bits_per_symbol
 
-    Everything else is hard-coded and exposed via read-only properties.
+    All other properties are hard-coded and exposed via read-only properties.
     On build(), creates:
       - ResourceGrid (rg)
       - StreamManagement (sm)
@@ -32,7 +28,6 @@ class Config:
     """
 
     # user-settable parameters
-    direction: Direction = "uplink"
     perfect_csi: bool = False
     cdl_model: CDLModel = "D"
     delay_spread: float = 300e-9 # seconds
@@ -41,6 +36,7 @@ class Config:
     num_bits_per_symbol: BitsPerSym = BitsPerSym.QPSK
 
     # hard-coded PHY/system parameters
+    _direction: str = field(init=False, default="uplink", repr=False)
     _subcarrier_spacing: float = field(init=False, default=15e3, repr=False)
     _fft_size: int = field(init=False, default=76, repr=False)
     _num_ofdm_symbols: int = field(init=False, default=14, repr=False)
@@ -63,15 +59,22 @@ class Config:
     _n: int = field(init=False, repr=False)
     _num_streams_per_tx: int = field(init=False, repr=False)
 
+    # enforce immutability
+    _IMMUTABLE_FIELDS: ClassVar[FrozenSet[str]] = frozenset({
+        "_direction", "_subcarrier_spacing", "_fft_size", "_num_ofdm_symbols", "_cyclic_prefix_length",
+        "_num_guard_carriers", "_dc_null", "_pilot_pattern", "_pilot_ofdm_symbol_indices",
+        "_num_ut_ant", "_num_bs_ant", "_modulation", "_num_bits_per_symbol", "_coderate", "_seed",
+    })
+    _immutable_locked: bool = field(init=False, default=False, repr=False)
+
+    def __setattr__(self, name, value):
+        if getattr(self, "_immutable_locked", False) and name in self._IMMUTABLE_FIELDS:
+            raise AttributeError(f"{name} is immutable (hard-coded PHY/system parameter).")
+        super().__setattr__(name, value)
+    
     # build/cache objects used across modules
     def build(self) -> "Config":
         # map one stream per UT antenna
-        '''
-        if self.direction == "uplink":
-            self._num_streams_per_tx = self._num_ut_ant
-        elif self.direction == "downlink":
-            self._num_streams_per_tx = self._num_bs_ant
-            '''
         self._num_streams_per_tx = self._num_ut_ant
         
         # Stream matrix: one TX, one RX stream group
@@ -99,6 +102,7 @@ class Config:
         if not isinstance(self.num_bits_per_symbol, BitsPerSym):
             self.num_bits_per_symbol = BitsPerSym(self.num_bits_per_symbol)
         self.build()
+        self._immutable_locked = True
 
     # get-methods
     @property
@@ -120,6 +124,10 @@ class Config:
     @property
     def num_streams_per_tx(self) -> int:
         return self._num_streams_per_tx
+
+    @property
+    def direction(self) -> str:
+        return self._direction
 
     @property
     def subcarrier_spacing(self) -> float:

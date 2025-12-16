@@ -3,7 +3,7 @@ from typing import Dict, Any
 from sionna.phy.utils import ebnodb2no, compute_ber
 from tensorflow.keras import Model
 
-from .config import Config, BitsPerSym, CDLModel, Direction
+from .config import Config, BitsPerSym, CDLModel
 from .csi import CSI
 from .tx import Tx
 from .channel import Channel
@@ -15,7 +15,6 @@ class System(Model):
     def __init__(self,
                  *,
                  training: bool = False,
-                 direction: Direction = "uplink",
                  perfect_csi: bool = False,
                  cdl_model: CDLModel = "D",
                  delay_spread: float = 300e-9,
@@ -37,7 +36,6 @@ class System(Model):
         self._num_res_blocks = num_res_blocks
 
         self._cfg = Config(
-            direction=direction,
             perfect_csi=perfect_csi,
             cdl_model=cdl_model,
             delay_spread=delay_spread,
@@ -103,7 +101,6 @@ if __name__ == "__main__":
     tf.get_logger().setLevel("ERROR")
 
     system = System(
-        direction="uplink",
         perfect_csi=True,
         cdl_model="D",
         delay_spread=300e-9,

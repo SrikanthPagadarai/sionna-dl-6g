@@ -8,7 +8,7 @@ from sionna.phy.utils import ebnodb2no, compute_ber
 from src import Config, CSI, Tx, Channel, Rx
 
 # config
-cfg = Config(direction="downlink", perfect_csi=False)
+cfg = Config(perfect_csi=False)
 
 # constants
 B = tf.constant(8, dtype=tf.int32)
