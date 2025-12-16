@@ -2,7 +2,7 @@
 name = "sionna-dl-6g"
 version = "0.1.0"
 package-mode = false
-description = "DL for 6G Using TensorFlow and Sionna"
+description = "Deep Learning Demos for B5G/6G Using TensorFlow and Sionna"
 authors = ["Srikanth Pagadarai <srikanth.pagadarai@gmail.com>"]
 
 [tool.poetry.dependencies]
@@ -14,9 +14,21 @@ matplotlib = "^3.9"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry.group.dev]
-optional = true
-
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
 black = "^24.0"
+pre-commit = "^4.5.0"
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | __pycache__
+  | checkpoints
+  | results
+)/
+'''
