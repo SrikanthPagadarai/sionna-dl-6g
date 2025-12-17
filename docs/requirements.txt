@@ -1,0 +1,5 @@
+# Documentation dependencies
+sphinx>=7.0
+furo
+sphinx-copybutton
+sphinx-autobuild
