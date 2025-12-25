@@ -1,0 +1,23 @@
+{
+  "seed": 42,
+  "batch_size": 100,
+  "system": {
+    "num_ut": 1,
+    "num_ut_ant": 1,
+    "num_streams_per_tx": 1
+  },
+  "rg": {
+    "num_ofdm_symbols": 8,
+    "fft_size": 1024,
+    "subcarrier_spacing": 15000.0,
+    "num_guard_carriers": [200, 199],
+    "dc_null": true,
+    "cyclic_prefix_length": 72,
+    "pilot_pattern": "kronecker",
+    "pilot_ofdm_symbol_indices": [2, 6]
+  },
+  "modcod": {
+    "num_bits_per_symbol": 4,
+    "coderate": 0.5
+  }
+}
