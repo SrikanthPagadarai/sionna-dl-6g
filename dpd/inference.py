@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Inference script for Neural Network DPD.
+Inference script for DPD evaluation.
+
+Supports both Neural Network (nn) and Least-Squares (ls) DPD methods.
 
 Demonstrates:
 - Out-of-band suppression (ACLR improvement)
@@ -9,7 +11,8 @@ Demonstrates:
 - Overlapped constellation plots showing 16-QAM
 
 Usage:
-    python inference.py
+    python inference.py --dpd_method nn   # Neural Network DPD
+    python inference.py --dpd_method ls   # Least-Squares DPD
 """
 
 import os
@@ -31,6 +34,7 @@ for g in gpus:
 
 import numpy as np  # noqa: E402
 import pickle  # noqa: E402
+import argparse  # noqa: E402
 from pathlib import Path  # noqa: E402
 from fractions import Fraction  # noqa: E402
 
@@ -44,10 +48,32 @@ from scipy.signal.windows import kaiser  # noqa: E402
 from src.system import DPDSystem  # noqa: E402
 
 
+# CLI Arguments
+parser = argparse.ArgumentParser(description="DPD Inference and Evaluation")
+parser.add_argument(
+    "--dpd_method",
+    type=str,
+    default="nn",
+    choices=["nn", "ls"],
+    help="DPD method: 'nn' (Neural Network) or 'ls' (Least-Squares)",
+)
+parser.add_argument(
+    "--batch_size",
+    type=int,
+    default=16,
+    help="Batch size for signal generation (default: 16)",
+)
+args = parser.parse_args()
+
 # Configuration
-BATCH_SIZE = 16
+DPD_METHOD = args.dpd_method
+BATCH_SIZE = args.batch_size
 PA_SAMPLE_RATE = 122.88e6
 CHANNEL_BW = 10e6
+
+# Method display name
+DPD_LABEL = "NN DPD" if DPD_METHOD == "nn" else "LS DPD"
+WEIGHT_FILE = "nn-dpd-weights" if DPD_METHOD == "nn" else "ls-dpd-weights"
 
 # Folders
 outdir = Path("results")
@@ -108,33 +134,61 @@ def plot_psd_comparison(
     sample_rate,
     save_path,
     channel_bw=10e6,
+    dpd_label="DPD",
 ):
-    """Plot PSD comparison normalized to 0 dBc (in-band power = 0 dB)."""
+    """Plot PSD comparison normalized to 0 dBc (in-band power = 0 dB).
 
-    def flatten(x):
-        return tf.reshape(x, [-1]).numpy()
+    Computes PSD per-batch and averages to avoid artifacts from
+    discontinuities at batch boundaries.
+    """
 
-    def compute_psd(signal):
-        """Compute PSD using Welch method."""
+    def to_numpy(x):
+        """Convert to numpy, keeping batch dimension."""
+        if hasattr(x, "numpy"):
+            return x.numpy()
+        return np.array(x)
+
+    def compute_psd_averaged(signal):
+        """Compute averaged PSD over batches using Welch method.
+
+        Args:
+            signal: [B, N] batched signal
+
+        Returns:
+            f: frequency array (shifted)
+            psd: averaged PSD (shifted)
+        """
         window = kaiser(1000, 9)
-        f, psd = welch(
-            signal, fs=sample_rate, window=window, nfft=1024, return_onesided=False
-        )
-        return np.fft.fftshift(f), np.fft.fftshift(psd)
+        signal = to_numpy(signal)
+
+        # Handle both batched [B, N] and flat [N] inputs
+        if len(signal.shape) == 1:
+            signal = signal.reshape(1, -1)
+
+        # Compute PSD for each batch and average
+        psds = []
+        for i in range(signal.shape[0]):
+            f, psd = welch(
+                signal[i],
+                fs=sample_rate,
+                window=window,
+                nfft=1024,
+                return_onesided=False,
+            )
+            psds.append(psd)
+
+        psd_avg = np.mean(psds, axis=0)
+        return np.fft.fftshift(f), np.fft.fftshift(psd_avg)
 
     def compute_inband_power(f, psd, bw):
         """Compute mean in-band PSD for normalization to 0 dBc."""
         inband_mask = np.abs(f) <= bw / 2
         return np.mean(psd[inband_mask])
 
-    # Compute PSDs
-    pa_input_flat = flatten(pa_input)
-    pa_no_dpd_flat = flatten(pa_output_no_dpd)
-    pa_with_dpd_flat = flatten(pa_output_with_dpd)
-
-    f_input, psd_input = compute_psd(pa_input_flat)
-    f_no_dpd, psd_no_dpd = compute_psd(pa_no_dpd_flat)
-    f_with_dpd, psd_with_dpd = compute_psd(pa_with_dpd_flat)
+    # Compute averaged PSDs
+    f_input, psd_input = compute_psd_averaged(pa_input)
+    f_no_dpd, psd_no_dpd = compute_psd_averaged(pa_output_no_dpd)
+    f_with_dpd, psd_with_dpd = compute_psd_averaged(pa_output_with_dpd)
 
     # Normalize each PSD to 0 dBc (in-band power = 0 dB)
     inband_power_input = compute_inband_power(f_input, psd_input, channel_bw)
@@ -154,10 +208,10 @@ def plot_psd_comparison(
     plt.figure(figsize=(12, 6))
     plt.plot(freqs_mhz, psd_input_db, label="PA Input (Reference)", alpha=0.8)
     plt.plot(freqs_mhz, psd_no_dpd_db, label="PA Output (No DPD)", alpha=0.8)
-    plt.plot(freqs_mhz, psd_with_dpd_db, label="PA Output (NN DPD)", alpha=0.8)
+    plt.plot(freqs_mhz, psd_with_dpd_db, label=f"PA Output ({dpd_label})", alpha=0.8)
     plt.xlabel("Frequency (MHz)")
     plt.ylabel("PSD (dBc)")
-    plt.title("Power Spectral Density: Effect of Neural Network DPD")
+    plt.title(f"Power Spectral Density: Effect of {dpd_label}")
     plt.legend()
     plt.grid(True)
     plt.ylim([-120, 10])  # Typical range for DPD plots
@@ -174,6 +228,7 @@ def plot_constellation(
     tx_baseband,
     fd_symbols,
     save_path,
+    dpd_label="DPD",
 ):
     """
     Plot overlapped constellation comparison showing 16-QAM points.
@@ -182,9 +237,9 @@ def plot_constellation(
     """
     signal_fs = eval_system.signal_fs
     pa_sample_rate = eval_system.pa_sample_rate
-    fft_size = eval_system._fft_size
-    cp_length = eval_system._cp_length
-    num_symbols = eval_system._num_ofdm_symbols
+    fft_size = eval_system.fft_size
+    cp_length = eval_system.cp_length
+    num_symbols = eval_system.num_ofdm_symbols
 
     # Flatten all signals
     def flatten(x):
@@ -284,12 +339,12 @@ def plot_constellation(
         sym_with_dpd_np.imag.flatten(),
         ".",
         ms=3,
-        label=f"PA Output, with NN DPD (EVM={evm_with_dpd:.1f}%)",
+        label=f"PA Output, with {dpd_label} (EVM={evm_with_dpd:.1f}%)",
         alpha=0.5,
     )
     plt.xlabel("In-Phase (I)")
     plt.ylabel("Quadrature (Q)")
-    plt.title("Constellation Comparison: Effect of Neural Network DPD")
+    plt.title(f"Constellation Comparison: Effect of {dpd_label}")
     plt.legend(loc="upper right")
     plt.grid(True, alpha=0.3)
     plt.axis("equal")
@@ -302,31 +357,50 @@ def plot_constellation(
 
 def main():
     print("=" * 70)
-    print("Neural Network DPD Inference")
+    print(f"{DPD_LABEL} Inference")
     print("=" * 70)
 
     # Build eval system
-    print("\n[1] Building evaluation system...")
-    eval_system = DPDSystem(
-        training=False,
-        tx_config_path="src/tx_config.json",
-        pa_order=7,
-        pa_memory_depth=4,
-        dpd_memory_depth=4,
-        dpd_num_filters=64,
-        dpd_num_layers_per_block=2,
-        dpd_num_res_blocks=3,
-        rms_input_dbm=0.5,
-        pa_sample_rate=PA_SAMPLE_RATE,
-    )
+    print(f"\n[1] Building evaluation system with {DPD_LABEL}...")
+
+    if DPD_METHOD == "nn":
+        eval_system = DPDSystem(
+            training=False,
+            dpd_method="nn",
+            tx_config_path="src/tx_config.json",
+            pa_order=7,
+            pa_memory_depth=4,
+            dpd_memory_depth=4,
+            dpd_num_filters=64,
+            dpd_num_layers_per_block=2,
+            dpd_num_res_blocks=3,
+            rms_input_dbm=0.5,
+            pa_sample_rate=PA_SAMPLE_RATE,
+        )
+    else:  # "ls"
+        eval_system = DPDSystem(
+            training=False,
+            dpd_method="ls",
+            tx_config_path="src/tx_config.json",
+            pa_order=7,
+            pa_memory_depth=4,
+            dpd_order=7,
+            dpd_memory_depth=4,
+            rms_input_dbm=0.5,
+            pa_sample_rate=PA_SAMPLE_RATE,
+        )
 
     # Warm up
     x_warmup = eval_system.generate_signal(1)
-    _ = eval_system.forward_on_signal(x_warmup, training=False)
-    print(
-        "    DPD parameters: ",
-        f"{sum(tf.size(v).numpy() for v in eval_system.dpd.trainable_variables)}",
-    )
+    _ = eval_system(x_warmup, training=False)
+
+    if DPD_METHOD == "nn":
+        print(
+            "    DPD parameters: ",
+            f"{sum(tf.size(v).numpy() for v in eval_system.dpd.trainable_variables)}",
+        )
+    else:
+        print(f"    DPD coefficients: {eval_system.dpd.n_coeffs}")
 
     # Estimate PA gain
     pa_gain = eval_system.estimate_pa_gain()
@@ -334,7 +408,7 @@ def main():
 
     # Load weights
     print("\n[2] Loading trained weights...")
-    weight_file = outdir / "nn-dpd-weights"
+    weight_file = outdir / WEIGHT_FILE
     if weight_file.exists():
         with open(weight_file, "rb") as f:
             weights = pickle.load(f)
@@ -351,7 +425,7 @@ def main():
     tx_baseband = signal_data["tx_baseband"]
     fd_symbols = signal_data["fd_symbols"]
 
-    results = eval_system.forward_on_signal(pa_input, training=False)
+    results = eval_system(pa_input, training=False)
     pa_output_no_dpd = results["pa_output_no_dpd"]
     pa_output_with_dpd = results["pa_output_with_dpd"]
 
@@ -364,9 +438,13 @@ def main():
         pa_output_with_dpd, PA_SAMPLE_RATE, CHANNEL_BW
     )
 
-    print(f"    ACLR (No DPD):  Lower = {aclr_l_no:.2f} dB, Upper = {aclr_u_no:.2f} dB")
     print(
-        f"    ACLR (NN DPD):  Lower = {aclr_l_dpd:.2f} dB, Upper = {aclr_u_dpd:.2f} dB"
+        f"    ACLR (No DPD):   Lower = {aclr_l_no:.2f} dB, Upper = {aclr_u_no:.2f} dB"
+    )
+    print(
+        f"    ACLR ({DPD_LABEL}):  "
+        f"Lower = {aclr_l_dpd:.2f} dB, "
+        f"Upper = {aclr_u_dpd:.2f} dB"
     )
 
     aclr_improvement = ((aclr_l_no - aclr_l_dpd) + (aclr_u_no - aclr_u_dpd)) / 2
@@ -377,13 +455,13 @@ def main():
     nmse_no_dpd = compute_nmse(pa_input, pa_output_no_dpd)
     nmse_with_dpd = compute_nmse(pa_input, pa_output_with_dpd)
 
-    print(f"    NMSE (No DPD):  {nmse_no_dpd:.2f} dB")
-    print(f"    NMSE (NN DPD):  {nmse_with_dpd:.2f} dB")
+    print(f"    NMSE (No DPD):   {nmse_no_dpd:.2f} dB")
+    print(f"    NMSE ({DPD_LABEL}):  {nmse_with_dpd:.2f} dB")
     print(f"    NMSE Improvement: {nmse_no_dpd - nmse_with_dpd:.2f} dB")
 
     # Generate PSD plot
     print("\n[6] Generating PSD comparison plot...")
-    psd_path = outdir / "psd_comparison.png"
+    psd_path = outdir / f"psd_comparison_{DPD_METHOD}.png"
     plot_psd_comparison(
         pa_input,
         pa_output_no_dpd,
@@ -391,12 +469,13 @@ def main():
         PA_SAMPLE_RATE,
         psd_path,
         channel_bw=CHANNEL_BW,
+        dpd_label=DPD_LABEL,
     )
     print(f"    Saved to {psd_path}")
 
     # Generate constellation plot
     print("\n[7] Generating constellation plot...")
-    const_path = outdir / "constellation_comparison.png"
+    const_path = outdir / f"constellation_comparison_{DPD_METHOD}.png"
     try:
         evm_input, evm_no_dpd, evm_with_dpd = plot_constellation(
             eval_system,
@@ -406,11 +485,12 @@ def main():
             tx_baseband,
             fd_symbols,
             const_path,
+            dpd_label=DPD_LABEL,
         )
         print(f"    Saved to {const_path}")
         print(f"    EVM (PA Input):  {evm_input:.2f}%")
         print(f"    EVM (No DPD):    {evm_no_dpd:.2f}%")
-        print(f"    EVM (NN DPD):    {evm_with_dpd:.2f}%")
+        print(f"    EVM ({DPD_LABEL}):   {evm_with_dpd:.2f}%")
     except Exception as e:
         print(f"    Constellation plot failed: {e}")
         import traceback
@@ -422,7 +502,7 @@ def main():
     print("\n" + "=" * 70)
     print("Summary")
     print("=" * 70)
-    print(f"\n{'Metric':<25} {'No DPD':>15} {'NN DPD':>15} {'Improvement':>15}")
+    print(f"\n{'Metric':<25} {'No DPD':>15} {DPD_LABEL:>15} {'Improvement':>15}")
     print("-" * 70)
     print(
         f"{'ACLR Lower (dB)':<25} "
@@ -452,9 +532,10 @@ def main():
     print("-" * 70)
 
     # Save results
-    results_file = outdir / "inference_results.npz"
+    results_file = outdir / f"inference_results_{DPD_METHOD}.npz"
     np.savez(
         results_file,
+        dpd_method=DPD_METHOD,
         aclr_lower_no_dpd=aclr_l_no,
         aclr_upper_no_dpd=aclr_u_no,
         aclr_lower_dpd=aclr_l_dpd,

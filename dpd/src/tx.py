@@ -73,34 +73,3 @@ class Tx(tf.keras.Model):
         x_time = self.ofdm_modulator(x_rg)
 
         return {"bits": bits, "codewords": codewords, "x_rg": x_rg, "x_time": x_time}
-
-
-def build_dataset_from_tx(
-    config_path: str, batch_size: int = None, shuffle_seed: int = 0
-):
-    """Generate OFDM dataset from Tx configuration.
-
-    Returns dict with x_time, x_rg tensors and configuration metadata.
-    """
-    cfg = json.loads(Path(config_path).read_text())
-    batch_size = batch_size or int(cfg.get("batch_size", 1024))
-
-    fft_size = int(cfg["rg"]["fft_size"])
-    cp_len = int(cfg["rg"]["cyclic_prefix_length"])
-    num_ofdm_symbols = int(cfg["rg"]["num_ofdm_symbols"])
-
-    tx = Tx(config_path)
-    out = tx(tf.constant(batch_size, tf.int32))
-
-    # Remove singleton dimensions and reshape
-    x_time = tf.squeeze(out["x_time"], axis=(1, 2))
-    x_rg = tf.squeeze(out["x_rg"], axis=(1, 2))
-    x_time = tf.reshape(x_time, (batch_size, num_ofdm_symbols, fft_size + cp_len))
-
-    return {
-        "x_time": x_time,
-        "x_rg": x_rg,
-        "fft_size": fft_size,
-        "cp_len": cp_len,
-        "cfg": cfg,
-    }

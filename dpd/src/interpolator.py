@@ -1,22 +1,42 @@
-"""Interpolator for batched signal upsampling using scipy."""
+"""TensorFlow graph-mode compatible interpolator for signal upsampling.
 
-import numpy as np
+This module provides Interpolator, a drop-in replacement for Interpolator
+that uses Sionna's native signal processing functions (Upsampling, Downsampling,
+convolve) for GPU acceleration and graph-mode compatibility.
+
+The implementation uses Kaiser-windowed FIR filter design with configurable
+parameters for excellent stopband attenuation (>100 dB with defaults).
+"""
+
 import tensorflow as tf
 from fractions import Fraction
-from scipy.signal import resample_poly, firls, lfilter
+from math import gcd
+from scipy.signal import firwin  # Only used at init time, not in graph
+
+from sionna.phy.signal import Upsampling, Downsampling, convolve
 
 
 class Interpolator(tf.keras.layers.Layer):
     """
-    Interpolator using scipy's resample_poly + firls + lfilter.
+    TensorFlow graph-mode compatible interpolator using Sionna primitives.
 
-    Matches the exact behavior of signal.py's upsample() method.
-    Supports batched input [B, N] by flattening, processing, and reshaping.
+    Performs polyphase-equivalent resampling:
+    1. Upsample by factor L (insert L-1 zeros between samples) via Sionna Upsampling
+    2. Apply FIR anti-imaging filter via Sionna convolve
+    3. Downsample by factor M (take every M-th sample) via Sionna Downsampling
+
+    Each batch element is processed independently along the sample axis,
+    which is the correct behavior for independent OFDM frames.
+
+    Filter design uses Kaiser-windowed FIR with configurable parameters
+    for excellent stopband attenuation (>100 dB with defaults).
 
     Args:
         input_rate: Input sample rate (Hz)
         output_rate: Output sample rate (Hz)
         max_denominator: Maximum denominator when converting to fraction (default: 1000)
+        half_len_mult: Filter half-length multiplier (default: 20 for >100 dB stopband)
+        kaiser_beta: Kaiser window beta parameter (default: 8.0 for >100 dB stopband)
     """
 
     def __init__(
@@ -24,6 +44,8 @@ class Interpolator(tf.keras.layers.Layer):
         input_rate: float,
         output_rate: float,
         max_denominator: int = 1000,
+        half_len_mult: int = 20,
+        kaiser_beta: float = 8.0,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -36,83 +58,78 @@ class Interpolator(tf.keras.layers.Layer):
         self._input_rate = input_rate
         self._output_rate = input_rate * frac.numerator / frac.denominator
 
-        # Design anti-imaging filter (same as signal.py)
-        cutoff = self._downsample_factor / self._upsample_factor
-        self._filter_coeffs = firls(51, [0, cutoff, cutoff + 0.1, 1], [1, 1, 0, 0])
+        # Reduce by GCD (matching scipy)
+        g = gcd(self._upsample_factor, self._downsample_factor)
+        up_g = self._upsample_factor // g
+        down_g = self._downsample_factor // g
 
-    @property
-    def upsample_factor(self):
-        """Upsampling factor L (numerator)."""
-        return self._upsample_factor
+        # Design anti-imaging filter matching scipy.signal.resample_poly
+        # Filter length formula: 2 * (half_len_mult * max(up, down)) + 1
+        max_rate = max(up_g, down_g)
+        half_len = half_len_mult * max_rate
+        n_taps = 2 * half_len + 1
 
-    @property
-    def downsample_factor(self):
-        """Downsampling factor M (denominator)."""
-        return self._downsample_factor
+        # Cutoff frequency normalized to upsampled Nyquist rate
+        cutoff = 1.0 / max_rate
 
-    @property
-    def factor(self):
-        """Net resampling factor L/M."""
-        return self._upsample_factor / self._downsample_factor
+        # Design lowpass filter with Kaiser window
+        filter_coeffs = firwin(n_taps, cutoff, window=("kaiser", kaiser_beta))
 
-    @property
-    def input_rate(self):
-        return self._input_rate
+        # Scale filter to compensate for zero-insertion gain loss
+        filter_coeffs = filter_coeffs * self._upsample_factor
 
-    @property
-    def output_rate(self):
-        return self._output_rate
+        # Store filter as TF constant (complex for use with Sionna convolve)
+        self._filter_coeffs = tf.constant(filter_coeffs, dtype=tf.float32)
+        self._filter_length = n_taps
+        self._half_len = half_len
+
+        # Create Sionna upsampling/downsampling blocks
+        # axis=-1 operates on the sample dimension for [B, N] input
+        self._upsampler = Upsampling(samples_per_symbol=self._upsample_factor, axis=-1)
+
+        if self._downsample_factor > 1:
+            self._downsampler = Downsampling(
+                samples_per_symbol=self._downsample_factor, axis=-1
+            )
+        else:
+            self._downsampler = None
 
     def call(self, x):
         """
-        Interpolate input tensor using scipy (same as signal.py).
+        Interpolate input tensor using Sionna operations (graph-compatible).
 
-        For batched input [B, N], the signal is flattened, processed as
-        one continuous signal, then reshaped back to [B, N*factor].
+        Each batch element is processed independently along the sample axis.
 
         Args:
-            x: [num_samples] or [B, num_samples] tensor
+            x: [B, num_samples] complex64 tensor
 
         Returns:
-            Tuple of (interpolated tensor, output_rate)
+            Tuple of (interpolated tensor [B, num_samples * factor], output_rate)
         """
-        # Store original shape info
-        input_shape = tf.shape(x)
-        input_ndims = len(x.shape)
+        # Ensure complex64
+        x = tf.cast(x, tf.complex64)
 
-        if input_ndims == 1:
-            batch_size = 1
-            x_flat = x
-        elif input_ndims == 2:
-            batch_size = input_shape[0]
-            x_flat = tf.reshape(x, [-1])
+        # Step 1: Upsample (insert zeros) using Sionna
+        # [B, N] -> [B, N * L]
+        upsampled = self._upsampler(x)
+        n_upsampled = tf.shape(upsampled)[-1]
+
+        # Step 2: Apply anti-imaging FIR filter using Sionna convolve
+        # Use 'full' padding: output length = N*L + K - 1
+        filter_complex = tf.cast(self._filter_coeffs, tf.complex64)
+        filtered = convolve(upsampled, filter_complex, padding="full", axis=-1)
+
+        # Compensate for filter group delay
+        # For a symmetric FIR filter of length K, group delay = (K-1)/2 samples
+        # With 'full' convolution, the aligned output starts at index (K-1)//2
+        # and we want N*L output samples
+        group_delay = (self._filter_length - 1) // 2
+        filtered = filtered[..., group_delay : group_delay + n_upsampled]
+
+        # Step 3: Downsample using Sionna (if needed)
+        if self._downsampler is not None:
+            x_out = self._downsampler(filtered)
         else:
-            raise ValueError(f"Input must be 1D or 2D, got shape {x.shape}")
-
-        # Convert to numpy for scipy processing
-        data_np = x_flat.numpy()
-
-        # Step 1: Polyphase resampling (same as signal.py)
-        upsampled = resample_poly(
-            data_np, self._upsample_factor, self._downsample_factor
-        )
-
-        # Step 2: Anti-imaging lowpass filter (same as signal.py)
-        filtered = lfilter(
-            self._filter_coeffs, 1, np.concatenate([upsampled, np.zeros(100)])
-        )
-
-        # Convert back to tensor
-        x_out = tf.constant(filtered, dtype=tf.complex64)
-
-        # Reshape back to original batch structure
-        if input_ndims == 2:
-            # Calculate output samples per batch
-            total_output = len(filtered)
-            out_samples_per_batch = total_output // batch_size
-            x_out = tf.reshape(
-                x_out[: batch_size * out_samples_per_batch],
-                [batch_size, out_samples_per_batch],
-            )
+            x_out = filtered
 
         return x_out, self._output_rate

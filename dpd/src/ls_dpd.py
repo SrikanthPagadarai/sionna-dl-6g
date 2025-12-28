@@ -1,24 +1,23 @@
-"""Batched Indirect Learning Architecture DPD for Sionna pipeline."""
+"""Batched Least-Squares DPD using Indirect Learning Architecture."""
 
 import numpy as np
 import tensorflow as tf
-import matplotlib.pyplot as plt
 
 
-class IndirectLearningDPD(tf.keras.layers.Layer):
+class LeastSquaresDPD(tf.keras.layers.Layer):
     """
-    Indirect Learning Architecture Digital Pre-Distortion for batched signals.
+    Least-Squares Digital Pre-Distortion using Indirect Learning Architecture.
 
     Inherits from tf.keras.layers.Layer for Sionna compatibility and differentiability.
     Supports batched input [B, num_samples] for Sionna-style processing.
-    Uses the same GMP (Generalized Memory Polynomial) model as the original.
+    Uses the GMP (Generalized Memory Polynomial) model.
 
-    The predistort() method is fully differentiable and can be used in end-to-end
-    training pipelines. For LS-based learning, use perform_learning().
+    The predistort() method is fully differentiable. For LS-based learning,
+    use DPDSystem.perform_ls_learning() which orchestrates the training loop.
 
     Args:
         order: Polynomial order (must be odd, default: 7)
-        memory_depth: Memory depth in samples (default: 3)
+        memory_depth: Memory depth in samples (default: 4)
         lag_depth: Lag/lead depth for cross-terms (default: 0)
         nIterations: Number of learning iterations (default: 3)
         learning_rate: Learning rate (default: 0.75)
@@ -66,7 +65,8 @@ class IndirectLearningDPD(tf.keras.layers.Layer):
             ), "GMP not yet supported for even terms. Set lag_depth=0"
 
         self._n_coeffs = self._compute_n_coeffs()
-        self._coeffs, self.coeff_history, self.result_history = None, None, None
+        # coeff_history is managed by DPDSystem.perform_ls_learning()
+        self.coeff_history = None
 
     def build(self, input_shape):
         """Build layer - create trainable weights."""
@@ -89,14 +89,6 @@ class IndirectLearningDPD(tf.keras.layers.Layer):
             dtype=tf.float32,
         )
         super().build(input_shape)
-
-    @property
-    def order(self):
-        return self._order
-
-    @property
-    def memory_depth(self):
-        return self._memory_depth
 
     @property
     def n_coeffs(self):
@@ -240,105 +232,3 @@ class IndirectLearningDPD(tf.keras.layers.Layer):
         XHX = tf.linalg.matmul(XH, X_slice)
         reg = tf.cast(lam * tf.eye(tf.shape(XHX)[0]), dtype=tf.complex64)
         return tf.linalg.solve(XHX + reg, tf.linalg.matmul(XH, y_slice))
-
-    def perform_learning(self, x, pa, verbose=False):
-        """
-        Perform iterative DPD learning using indirect learning architecture.
-
-        Args:
-            x: [num_samples] or [B, num_samples] input tensor (at PA sample rate)
-            pa: PowerAmplifier instance
-            verbose: Print progress (default: True)
-        Returns:
-            Dictionary with learning results
-        """
-        if not self.built:
-            self.build(x.shape)
-
-        input_ndims, input_shape = len(x.shape), tf.shape(x)
-        batch_size = input_shape[0] if input_ndims == 2 else 1
-        samples_per_batch = input_shape[1] if input_ndims == 2 else None
-        x_flat = tf.reshape(x, [-1]) if input_ndims == 2 else x
-
-        self.coeff_history = self.coeffs.numpy().copy()
-        self.result_history = []
-
-        if verbose:
-            print(
-                f"Starting DPD learning: {self._nIterations} iterations, "
-                f"order={self._order}, memory={self._memory_depth}"
-            )
-
-        for iteration in range(self._nIterations):
-            u = self.predistort(x_flat)
-
-            # Pass through PA (handle batched PA)
-            if input_ndims == 2:
-                y = tf.reshape(pa(tf.reshape(u, [batch_size, samples_per_batch])), [-1])
-            else:
-                y = tf.reshape(pa(tf.expand_dims(u, 0)), [-1])
-
-            Y = self.setup_basis_matrix(y)
-            current_coeffs = self.coeffs
-
-            if self._learning_method == "newton":
-                new_coeffs = current_coeffs + self._learning_rate * self._ls_estimation(
-                    Y, u - self.predistort(y)
-                )
-            else:  # 'ema'
-                new_coeffs = (
-                    1 - self._learning_rate
-                ) * current_coeffs + self._learning_rate * self._ls_estimation(Y, u)
-
-            self.coeffs = new_coeffs
-            self.coeff_history = np.hstack([self.coeff_history, self.coeffs.numpy()])
-
-            if verbose:
-                y_power = 10 * np.log10(np.mean(np.abs(y.numpy()) ** 2) + 1e-12)
-                print(
-                    f"  Iteration {iteration + 1}/{self._nIterations}: "
-                    f"PA output power = {y_power:.2f} dB"
-                )
-
-        if verbose:
-            print("DPD learning complete.")
-
-        return {"coeffs": self.coeffs.numpy(), "coeff_history": self.coeff_history}
-
-    def plot_coeff_history(self, save_path=None):
-        """Plot coefficient learning history."""
-        if self.coeff_history is None:
-            print("No learning history available. Run perform_learning() first.")
-            return
-
-        plt.figure(figsize=(10, 6))
-        plt.plot(np.arange(self.coeff_history.shape[1]), np.abs(self.coeff_history.T))
-        plt.title("DPD Coefficient Learning History")
-        plt.xlabel("Iteration")
-        plt.ylabel("|coeffs|")
-        plt.grid(True)
-
-        if save_path:
-            plt.savefig(save_path, dpi=150)
-            plt.close()
-            print(f"Saved to {save_path}")
-        else:
-            plt.show()
-
-    def get_config(self):
-        """Return layer configuration for serialization."""
-        config = super().get_config()
-        config.update(
-            {
-                "order": self._order,
-                "memory_depth": self._memory_depth,
-                "lag_depth": self._lag_depth,
-                "nIterations": self._nIterations,
-                "learning_rate": self._learning_rate,
-                "learning_method": self._learning_method,
-                "use_even": self._use_even,
-                "use_conj": self._use_conj,
-                "use_dc_term": self._use_dc_term,
-            }
-        )
-        return config

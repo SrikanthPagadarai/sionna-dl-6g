@@ -69,22 +69,6 @@ class PowerAmplifier(tf.keras.layers.Layer):
         else:
             self._poly_coeffs = self.DEFAULT_COEFFS[: self._n_coeffs, :memory_depth]
 
-    @property
-    def order(self):
-        return self._order
-
-    @property
-    def memory_depth(self):
-        return self._memory_depth
-
-    @property
-    def n_coeffs(self):
-        return self._n_coeffs
-
-    @property
-    def poly_coeffs(self):
-        return self._poly_coeffs
-
     def call(self, x):
         """
         Apply PA model to input signal.

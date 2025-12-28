@@ -1,19 +1,18 @@
 from .power_amplifier import PowerAmplifier
-from .indirect_learning_dpd import IndirectLearningDPD
+from .ls_dpd import LeastSquaresDPD
 from .nn_dpd import NeuralNetworkDPD, ResidualBlock
 from .system import DPDSystem
 from .interpolator import Interpolator
-from .tx import Tx, build_dataset_from_tx
+from .tx import Tx
 from .utilities import normalize_to_rms
 
 __all__ = [
     "NeuralNetworkDPD",
-    "IndirectLearningDPD",
+    "LeastSquaresDPD",
     "ResidualBlock",
     "DPDSystem",
     "PowerAmplifier",
     "Interpolator",
     "Tx",
-    "build_dataset_from_tx",
     "normalize_to_rms",
 ]

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """
-Training script for Neural Network DPD using Indirect Learning Architecture.
+Training script for Neural Network DPD.
+
+Uses indirect learning architecture with gradient-based optimization.
+The entire forward pass runs inside tf.function for GPU acceleration.
 
 Usage:
-    python training.py --iterations 10000
-    python training.py --iterations 5000 --fresh  # Start fresh, ignore checkpoint
+    python training_nn.py --iterations 1000
+    python training_nn.py --iterations 5000 --fresh  # Start fresh, ignore checkpoint
 """
 
 import os
@@ -53,10 +56,11 @@ os.makedirs("results", exist_ok=True)
 os.makedirs("checkpoints", exist_ok=True)
 ckpt_dir = "checkpoints"
 
-# System
+# Build system
 print("Building DPD System...")
 system = DPDSystem(
     training=True,
+    dpd_method="nn",
     tx_config_path="src/tx_config.json",
     pa_order=7,
     pa_memory_depth=4,
@@ -68,10 +72,9 @@ system = DPDSystem(
     pa_sample_rate=122.88e6,
 )
 
-# Warm-up (variable creation) - generate signal outside tf.function
+# Warm-up (variable creation)
 print("Warming up model...")
-x_warmup = system.generate_signal(BATCH_SIZE)
-_ = system.forward_on_signal(x_warmup, training=True)
+_ = system(BATCH_SIZE, training=True)
 print(f"Number of trainable variables: {len(system.trainable_variables)}")
 print(
     "Total trainable parameters: ",
@@ -106,11 +109,11 @@ target_iteration = start_iteration + args.iterations
 print(f"Training from {start_iteration} to {target_iteration}")
 
 
-# Train step - takes pre-generated signal, not batch_size
+# Train step (full graph-mode)
 @tf.function(reduce_retracing=True)
-def train_step(x):
+def train_step(batch_size):
     with tf.GradientTape() as tape:
-        loss = system.forward_on_signal(x, training=True)
+        loss = system(batch_size, training=True)
     grads = tape.gradient(loss, system.trainable_variables)
     grads = [
         g if g is not None else tf.zeros_like(w)
@@ -119,7 +122,7 @@ def train_step(x):
     return loss, grads
 
 
-# Sanity: accumulation alignment
+# Align iterations to accumulation steps
 if start_iteration % ACCUMULATION_STEPS != 0:
     start_iteration = (start_iteration // ACCUMULATION_STEPS) * ACCUMULATION_STEPS
     print(f"Adjusted start_iteration to {start_iteration} for accumulation alignment")
@@ -133,17 +136,15 @@ if target_iteration % ACCUMULATION_STEPS != 0:
 # Training loop
 print("\nStarting training...")
 
-# Pre-allocate gradient accumulators with zeros (same shape as trainable variables)
+# Pre-allocate gradient accumulators
 accumulated_grads = [
     tf.Variable(tf.zeros_like(v), trainable=False) for v in system.trainable_variables
 ]
 
-for i in range(start_iteration, target_iteration):
-    # Generate signal OUTSIDE tf.function (in eager mode)
-    x = system.generate_signal(BATCH_SIZE)
+batch_size_tensor = tf.constant(BATCH_SIZE, dtype=tf.int32)
 
-    # Train step inside tf.function
-    loss, grads = train_step(x)
+for i in range(start_iteration, target_iteration):
+    loss, grads = train_step(batch_size_tensor)
 
     for acc_g, g in zip(accumulated_grads, grads):
         acc_g.assign_add(g)
@@ -189,7 +190,7 @@ try:
 
     plt.figure(figsize=(10, 6))
     plt.semilogy(loss_history)
-    plt.title("NN DPD Training Loss (Indirect Learning)")
+    plt.title("NN DPD Training Loss")
     plt.xlabel("Iteration")
     plt.ylabel("MSE Loss")
     plt.grid(True)

@@ -113,18 +113,6 @@ class NeuralNetworkDPD(Layer):
             name="output",
         )
 
-    @property
-    def memory_depth(self):
-        return self._memory_depth
-
-    @property
-    def num_filters(self):
-        return self._num_filters
-
-    @property
-    def num_res_blocks(self):
-        return self._num_res_blocks
-
     def _create_sliding_windows_batched(self, signal):
         """
         Create sliding window features from batched complex signal.
@@ -218,16 +206,3 @@ class NeuralNetworkDPD(Layer):
             y = tf.squeeze(y, axis=0)
 
         return y
-
-    def get_config(self):
-        """Return layer configuration for serialization."""
-        config = super().get_config()
-        config.update(
-            {
-                "memory_depth": self._memory_depth,
-                "num_filters": self._num_filters,
-                "num_layers_per_block": self._num_layers_per_block,
-                "num_res_blocks": self._num_res_blocks,
-            }
-        )
-        return config
