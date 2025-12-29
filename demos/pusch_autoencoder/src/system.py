@@ -132,7 +132,7 @@ class PUSCHLinkE2E(tf.keras.Model):
 
         self._pusch_receiver = receiver(**receiver_kwargs)
 
-        # configure differentiable channel for autoencoder, iterable channel for baseline
+        # use differentiable channel for autoencoder, iterable channel for baseline
         if self._use_autoencoder:
             self._frequencies = subcarrier_frequencies(
                 self._pusch_transmitter.resource_grid.fft_size,
@@ -165,7 +165,7 @@ class PUSCHLinkE2E(tf.keras.Model):
         return self._pusch_transmitter.get_normalized_constellation()
 
     def get_constellation_min_distance(self):
-        """Returns the minimum pairwise distance in the constellation (for monitoring)."""
+        """Returns the minimum pairwise distance in the constellation"""
         points = tf.stack(
             [tf.math.real(self.constellation), tf.math.imag(self.constellation)],
             axis=-1,

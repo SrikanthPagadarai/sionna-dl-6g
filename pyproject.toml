@@ -6,8 +6,7 @@ authors = ["Srikanth Pagadarai <srikanth.pagadarai@gmail.com>"]
 readme = "README.md"
 license = "MIT"
 packages = [
-    { include = "mimo_ofdm_neural_receiver" },
-    { include = "pusch_autoencoder" },
+    { include = "demos" },
 ]
 
 [tool.poetry.dependencies]
@@ -44,8 +43,7 @@ exclude = '''
     \.git
   | \.venv
   | __pycache__
-  | checkpoints
-  | results
+  | demos/.*/(checkpoints|results)
   | docs\/_build
 )/
 '''

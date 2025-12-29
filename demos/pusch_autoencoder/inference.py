@@ -25,13 +25,13 @@ if gpus:
 # Disable layout optimizer to avoid ConvLSTM graph cycles at inference time
 tf.config.optimizer.set_experimental_options({"layout_optimizer": False})
 
-import pickle
-import numpy as np
-from sionna.phy.utils import PlotBER
+import pickle  # noqa: E402
+import numpy as np  # noqa: E402
+from sionna.phy.utils import PlotBER  # noqa: E402
 
-from src.config import Config
-from src.system import PUSCHLinkE2E
-from src.cir_manager import CIRManager
+from src.config import Config  # noqa: E402
+from src.system import PUSCHLinkE2E  # noqa: E402
+from src.cir_manager import CIRManager  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

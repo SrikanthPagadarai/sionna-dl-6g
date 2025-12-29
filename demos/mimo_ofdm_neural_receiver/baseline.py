@@ -45,7 +45,8 @@ for perfect_csi in perfect_csi_values:
         use_neural_rx=cfg["use_neural_rx"],
     )
 
-    # Adapter: sim_ber provides scalar ebno_db; System expects a vector (len == batch_size).
+    # Adapter: sim_ber provides scalar ebno_db,
+    # whereas System expects a vector (len == batch_size).
     @tf.function
     def mc_fun(batch_size: tf.Tensor, ebno_db: tf.Tensor):
         ebno_vec = tf.fill([batch_size], tf.cast(ebno_db, tf.float32))  # (B,)

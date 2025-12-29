@@ -82,7 +82,7 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
         Parameters
         ----------
         inputs : int or [batch_size, num_layers, tb_size], tf.float32
-            Either batch_size (if return_bits=True) or bits tensor (if return_bits=False)
+            batch_size (if return_bits=True) or bits tensor (if return_bits=False)
         """
         # Update constellation with normalized points (unit power)
         self._constellation.points = self.get_normalized_constellation()

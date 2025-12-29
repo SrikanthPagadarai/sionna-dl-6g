@@ -19,7 +19,6 @@ if not os.path.exists(results_path):
         "Run `python3 baseline.py` first to generate BER/BLER results."
     )
 conv_inf_results_path = os.path.join("results", "inference_results_conventional.npz")
-# two_phase_inf_results_path = os.path.join("results", "inference_results_two_phase.npz")
 
 data = np.load(results_path)
 conv_inf_data = np.load(conv_inf_results_path)
@@ -44,9 +43,8 @@ plt.semilogy(
     conv_inf_bler,
     marker="o",
     linestyle="-",
-    label=f"Neural MIMO Detector (Imperfect CSI, SGD)",
+    label="Neural MIMO Detector (Imperfect CSI, SGD)",
 )
-# plt.semilogy(ebno_db,two_phase_inf_bler,marker="o",linestyle="-",label=f"Neural MIMO Detector (Imperfect CSI, Two-Phase)")
 plt.xlabel("Eb/N0 [dB]")
 plt.ylabel("BLER")
 plt.title("PUSCH - BLER vs Eb/N0")
@@ -134,7 +132,10 @@ with open(final_weights_path, "rb") as f:
 # Display correction scales
 if "rx_weights" in final_weights:
     rx_weights = final_weights["rx_weights"]
-    # The scales are stored as: _h_correction_scale, _err_var_correction_scale_raw, _llr_correction_scale
+    # The scales are stored as:
+    # _h_correction_scale,
+    # _err_var_correction_scale_raw,
+    # _llr_correction_scale
     # rx_weights is a list where first 3 elements are the correction scales
     h_correction_scale = float(rx_weights[0])
     err_var_correction_scale_raw = float(rx_weights[1])
@@ -143,7 +144,7 @@ if "rx_weights" in final_weights:
     # Apply softplus to err_var scale: softplus(x) = log(1 + exp(x))
     err_var_correction_scale = np.log(1 + np.exp(err_var_correction_scale_raw))
 
-    print(f"Correction scales:")
+    print("Correction scales:")
     print(f"  h_correction_scale: {h_correction_scale:.6f}")
     print(f"  err_var_correction_scale (softplus): {err_var_correction_scale:.6f}")
     print(f"  llr_correction_scale: {llr_correction_scale:.6f}")

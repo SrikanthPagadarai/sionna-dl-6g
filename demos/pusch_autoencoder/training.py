@@ -52,7 +52,11 @@ tx_vars = model._pusch_transmitter.trainable_variables
 rx_vars_all = model._pusch_receiver.trainable_variables
 
 # Split RX variables: first 3 are correction scales, rest are NN weights
-# Order in trainable_variables: _h_correction_scale, _err_var_correction_scale_raw, _llr_correction_scale, then conv weights
+# Order in trainable_variables:
+# _h_correction_scale,
+# _err_var_correction_scale_raw,
+# _llr_correction_scale,
+# then conv weights
 rx_scale_vars = rx_vars_all[:3]
 nn_rx_vars = rx_vars_all[3:]
 
@@ -170,7 +174,7 @@ def compute_accumulated_grads():
 loss_history = []
 
 print(f"Starting {training_mode} training for {num_training_iterations} iterations...")
-print(f"  TX LR: 1e-2, RX Scales LR: 1e-2, RX NN LR: 1e-4")
+print("  TX LR: 1e-2, RX Scales LR: 1e-2, RX NN LR: 1e-4")
 
 for i in range(num_training_iterations):
     avg_loss, grads_tx, grads_scales, grads_rx_nn = compute_accumulated_grads()
@@ -253,7 +257,8 @@ with open(weights_path, "wb") as f:
     pickle.dump(weights_dict, f)
 
 print(
-    f"Saved {len(weights_dict['tx_weights'])} TX and {len(weights_dict['rx_weights'])} RX weight arrays"
+    f"Saved {len(weights_dict['tx_weights'])} TX and "
+    f"{len(weights_dict['rx_weights'])} RX weight arrays"
 )
 
 # Print final scale values
