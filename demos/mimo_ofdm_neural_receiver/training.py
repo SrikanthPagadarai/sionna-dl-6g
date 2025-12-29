@@ -4,7 +4,7 @@ import pickle
 import os
 import argparse
 
-from src.system import System
+from demos.mimo_ofdm_neural_receiver.src.system import System
 
 
 # CLI

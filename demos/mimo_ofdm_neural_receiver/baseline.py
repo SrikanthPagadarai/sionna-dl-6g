@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 from sionna.phy.utils import sim_ber
 
-from src.system import System
+from demos.mimo_ofdm_neural_receiver.src.system import System
 
 # User-tunable parameters
 base_params: Dict[str, Any] = dict(

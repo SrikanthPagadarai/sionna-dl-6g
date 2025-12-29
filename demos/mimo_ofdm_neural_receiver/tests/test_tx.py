@@ -1,8 +1,8 @@
 import pytest
 import tensorflow as tf
-from mimo_ofdm_neural_receiver.src.config import Config, BitsPerSym
-from mimo_ofdm_neural_receiver.src.csi import CSI
-from mimo_ofdm_neural_receiver.src.tx import Tx
+from demos.mimo_ofdm_neural_receiver.src.config import Config, BitsPerSym
+from demos.mimo_ofdm_neural_receiver.src.csi import CSI
+from demos.mimo_ofdm_neural_receiver.src.tx import Tx
 
 # Dimension reference for TX outputs:
 #

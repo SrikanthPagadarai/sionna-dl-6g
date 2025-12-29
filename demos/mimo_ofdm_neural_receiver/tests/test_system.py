@@ -1,8 +1,8 @@
 import tensorflow as tf
 import pytest
 from sionna.phy.utils import compute_ber
-from mimo_ofdm_neural_receiver.src.config import BitsPerSym
-from mimo_ofdm_neural_receiver.src.system import System
+from demos.mimo_ofdm_neural_receiver.src.config import BitsPerSym
+from demos.mimo_ofdm_neural_receiver.src.system import System
 
 # Dimension reference for System:
 #

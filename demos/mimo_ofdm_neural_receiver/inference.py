@@ -7,7 +7,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-from src.system import System  # noqa: E402
+from demos.mimo_ofdm_neural_receiver.src.system import System  # noqa: E402
 
 BATCH_SIZE = 32
 EBN0_DB_MIN = -3

@@ -1,9 +1,9 @@
 import tensorflow as tf
 import pytest
 from sionna.phy.utils import ebnodb2no
-from mimo_ofdm_neural_receiver.src.config import Config, BitsPerSym
-from mimo_ofdm_neural_receiver.src.csi import CSI
-from mimo_ofdm_neural_receiver.src.neural_rx import NeuralRx
+from demos.mimo_ofdm_neural_receiver.src.config import Config, BitsPerSym
+from demos.mimo_ofdm_neural_receiver.src.csi import CSI
+from demos.mimo_ofdm_neural_receiver.src.neural_rx import NeuralRx
 
 # Dimension reference for NeuralRx:
 #
