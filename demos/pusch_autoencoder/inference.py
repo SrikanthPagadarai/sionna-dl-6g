@@ -29,9 +29,9 @@ import pickle  # noqa: E402
 import numpy as np  # noqa: E402
 from sionna.phy.utils import PlotBER  # noqa: E402
 
-from src.config import Config  # noqa: E402
-from src.system import PUSCHLinkE2E  # noqa: E402
-from src.cir_manager import CIRManager  # noqa: E402
+from demos.pusch_autoencoder.src.config import Config  # noqa: E402
+from demos.pusch_autoencoder.src.system import PUSCHLinkE2E  # noqa: E402
+from demos.pusch_autoencoder.src.cir_manager import CIRManager  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

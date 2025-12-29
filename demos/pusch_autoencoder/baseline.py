@@ -4,9 +4,9 @@ import numpy as np
 import tensorflow as tf
 from sionna.phy.utils import PlotBER
 
-from src.config import Config
-from src.system import PUSCHLinkE2E
-from src.cir_manager import CIRManager
+from demos.pusch_autoencoder.src.config import Config
+from demos.pusch_autoencoder.src.system import PUSCHLinkE2E
+from demos.pusch_autoencoder.src.cir_manager import CIRManager
 
 # Set GPU device if not already specified
 if os.getenv("CUDA_VISIBLE_DEVICES") is None:

@@ -40,9 +40,9 @@ from pathlib import Path  # noqa: E402
 from scipy.signal import welch  # noqa: E402
 from scipy.signal.windows import kaiser  # noqa: E402
 
-from src.config import Config  # noqa: E402
-from dpd.src.nn_dpd_system import NN_DPDSystem  # noqa: E402
-from dpd.src.ls_dpd_system import LS_DPDSystem  # noqa: E402
+from demos.dpd.src.config import Config  # noqa: E402
+from demos.dpd.src.nn_dpd_system import NN_DPDSystem  # noqa: E402
+from demos.dpd.src.ls_dpd_system import LS_DPDSystem  # noqa: E402
 
 
 # CLI Arguments

@@ -2,7 +2,7 @@ import os
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-from src.config import Config
+from demos.pusch_autoencoder.src.config import Config
 
 # Load config (for consistent naming in output file)
 _cfg = Config()

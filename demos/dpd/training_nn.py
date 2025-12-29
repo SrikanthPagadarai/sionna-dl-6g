@@ -32,8 +32,8 @@ import numpy as np  # noqa: E402
 import pickle  # noqa: E402
 import argparse  # noqa: E402
 
-from src.config import Config  # noqa: E402
-from dpd.src.nn_dpd_system import NN_DPDSystem  # noqa: E402
+from demos.dpd.src.config import Config  # noqa: E402
+from demos.dpd.src.nn_dpd_system import NN_DPDSystem  # noqa: E402
 
 
 # CLI

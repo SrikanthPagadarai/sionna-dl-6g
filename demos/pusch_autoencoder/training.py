@@ -2,9 +2,9 @@ import os
 import sys
 import pickle
 import tensorflow as tf
-from src.cir_manager import CIRManager
-from src.system import PUSCHLinkE2E
-from src.config import Config
+from demos.pusch_autoencoder.src.cir_manager import CIRManager
+from demos.pusch_autoencoder.src.system import PUSCHLinkE2E
+from demos.pusch_autoencoder.src.config import Config
 import matplotlib.pyplot as plt
 import numpy as np
 
