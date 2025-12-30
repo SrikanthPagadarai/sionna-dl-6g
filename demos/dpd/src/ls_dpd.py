@@ -227,8 +227,4 @@ class LeastSquaresDPD(tf.keras.layers.Layer):
         end = -self._lag_depth if self._lag_depth > 0 else None
         X_slice, y_slice = X[start:end], tf.reshape(y[start:end], [-1, 1])
 
-        lam = tf.constant(0.001, dtype=tf.float32)
-        XH = tf.linalg.adjoint(X_slice)
-        XHX = tf.linalg.matmul(XH, X_slice)
-        reg = tf.cast(lam * tf.eye(tf.shape(XHX)[0]), dtype=tf.complex64)
-        return tf.linalg.solve(XHX + reg, tf.linalg.matmul(XH, y_slice))
+        return tf.linalg.lstsq(X_slice, y_slice, l2_regularizer=1e-3)
