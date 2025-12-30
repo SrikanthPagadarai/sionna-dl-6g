@@ -66,29 +66,19 @@ def test_trainable_transmitter_forward(training):
     # Forward pass
     output = tx(batch_size)
 
-    # Check outputs based on training mode
-    if training:
-        x_map, x, b, c = output
-        assert x_map.shape[0] == batch_size
-        assert x.shape[0] == batch_size
-        assert b.shape[0] == batch_size
-        assert c.shape[0] == batch_size
+    # The trainable transmitter returns (x_map, x, b, c) when return_bits=True (default)
+    # The training parameter only controls trainability, not output structure
+    x_map, x, b, c = output
+    assert x_map.shape[0] == batch_size
+    assert x.shape[0] == batch_size
+    assert b.shape[0] == batch_size
+    assert c.shape[0] == batch_size
 
-        print(f"\n[Trainable TX Forward] Training={training}:")
-        print(f"  x_map shape: {x_map.shape}")
-        print(f"  x shape: {x.shape}")
-        print(f"  b shape: {b.shape}")
-        print(f"  c shape: {c.shape}")
-    else:
-        # Inference mode - transmitter inherits from PUSCHTransmitter
-        # which returns (x, b) when return_bits=True (default)
-        x, b = output
-        assert x.shape[0] == batch_size
-        assert b.shape[0] == batch_size
-
-        print(f"\n[Trainable TX Forward] Training={training}:")
-        print(f"  x shape: {x.shape}")
-        print(f"  b shape: {b.shape}")
+    print(f"\n[Trainable TX Forward] Training={training}:")
+    print(f"  x_map shape: {x_map.shape}")
+    print(f"  x shape: {x.shape}")
+    print(f"  b shape: {b.shape}")
+    print(f"  c shape: {c.shape}")
 
 
 def test_normalized_constellation():
