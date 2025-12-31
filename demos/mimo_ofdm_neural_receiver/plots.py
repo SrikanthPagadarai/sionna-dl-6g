@@ -31,7 +31,7 @@ if os.path.exists(LOSS_FILE):
     plt.semilogy(loss)
     plt.xlabel("iteration")
     plt.ylabel("loss (log scale)")
-    plt.title("Training Loss Curve")
+    plt.title("Training Loss")
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
     plt.savefig(outfile, dpi=300, bbox_inches="tight")
     plt.close()

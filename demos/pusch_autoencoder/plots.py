@@ -24,26 +24,59 @@ data = np.load(results_path)
 conv_inf_data = np.load(conv_inf_results_path)
 # two_phase_inf_data = np.load(two_phase_inf_results_path)
 ebno_db = data["ebno_db"]
+ber = data["ber"]
 bler = data["bler"]
+conv_inf_ber = conv_inf_data["ber"]
 conv_inf_bler = conv_inf_data["bler"]
 # two_phase_inf_bler = two_phase_inf_data["bler"]
 
+# Plot BER
+plt.figure()
+for idx, csi_label in enumerate(["(Perfect CSI)", "(LS Channel Estimate)"]):
+    plt.semilogy(
+        ebno_db,
+        ber[idx],
+        marker="o",
+        linestyle="-",
+        label=f"LMMSE Eq {csi_label}",
+    )
+plt.semilogy(
+    ebno_db,
+    conv_inf_ber,
+    marker="o",
+    linestyle="-",
+    label="Autoencoder",
+)
+plt.xlabel("Eb/N0 [dB]")
+plt.ylabel("BLER")
+plt.title("PUSCH - BLER vs Eb/N0")
+plt.grid(True, which="both")
+plt.legend()
+
+outfile = os.path.join(
+    "results",
+    f"ber_plot_bs{batch_size}_ue{num_ue}_ant{num_bs_ant}x{num_ue_ant}.png",
+)
+plt.savefig(outfile, dpi=300, bbox_inches="tight")
+plt.close()
+print(f"Saved BLER plot to {outfile}")
+
 # Plot BLER
 plt.figure()
-for idx, csi_label in enumerate(["(Perfect CSI)", "(Imperfect CSI)"]):
+for idx, csi_label in enumerate(["(Perfect CSI)", "(LS Channel Estimate)"]):
     plt.semilogy(
         ebno_db,
         bler[idx],
         marker="o",
         linestyle="-",
-        label=f"LMMSE {csi_label}",
+        label=f"LMMSE Equalizer {csi_label}",
     )
 plt.semilogy(
     ebno_db,
     conv_inf_bler,
     marker="o",
     linestyle="-",
-    label="Neural MIMO Detector (Imperfect CSI, SGD)",
+    label="Autoencoder",
 )
 plt.xlabel("Eb/N0 [dB]")
 plt.ylabel("BLER")
@@ -90,29 +123,13 @@ init_const = standard_16qam()
 loss_path = os.path.join("results", "conventional_training_loss.npy")
 if os.path.exists(loss_path):
     loss_values = np.load(loss_path)
-    best_loss = np.min(loss_values)
-    best_iteration = np.argmin(loss_values)
-    print(f"Best loss: {best_loss:.6f} at iteration {best_iteration}")
-
-    # Plot loss from iteration 500 to 5000
-    start_iter = 500
-    end_iter = min(5000, len(loss_values))
-    iterations_range = np.arange(start_iter, end_iter)
-    loss_to_plot = loss_values[start_iter:end_iter]
 
     plt.figure(figsize=(10, 5))
-    plt.plot(iterations_range, loss_to_plot, linewidth=0.8)
-    plt.xlabel("Iteration")
-    plt.ylabel("Loss")
-    plt.title("Training Loss (Iterations 500-5000)")
+    plt.semilogy(loss_values, linewidth=0.8)
+    plt.xlabel("iteration")
+    plt.ylabel("loss (log scale)")
+    plt.title("Training Loss")
     plt.grid(True, linestyle="--", alpha=0.7)
-    plt.axhline(
-        best_loss,
-        color="r",
-        linestyle="--",
-        linewidth=0.8,
-        label=f"Best: {best_loss:.4f} @ iter {best_iteration}",
-    )
     plt.legend()
 
     loss_outfile = os.path.join("results", "training_loss.png")
