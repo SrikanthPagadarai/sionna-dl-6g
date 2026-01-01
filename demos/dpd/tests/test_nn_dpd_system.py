@@ -251,7 +251,7 @@ def test_nn_dpd_system_properties():
 
     # Test properties
     assert system.dpd is not None
-    assert system.ofdm_receiver is not None
+    assert system.minimal_ofdm_receiver is not None
     assert system.signal_fs == cfg.signal_sample_rate
     assert system.pa_sample_rate == 122.88e6
     assert system.fft_size == cfg.fft_size
