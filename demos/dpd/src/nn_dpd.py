@@ -1,8 +1,32 @@
-"""Neural Network based Digital Pre-Distortion using Indirect Learning Architecture.
+"""
+Neural network digital predistortion using fully-connected feedforward architecture.
 
-This module implements a feedforward neural network DPD following the standard
-TensorFlow Layer pattern. Supports batched operation [B, num_samples] where
-each batch element is processed independently.
+Implements a neural network-based DPD that learns the PA inverse
+through gradient-based optimization. Unlike the conventional LS-DPD,
+a neural network-based DPD can learn arbitrary nonlinear mappings, potentially
+capturing PA behaviors that don't fit within the memory polynomial model.
+
+The architecture uses:
+
+- **Sliding window** input to capture memory effects (similar concept to MP)
+- **Residual blocks** for stable deep network training
+- **Skip connection** to ensure identity initialization
+- **Real-valued processing** of complex signals (split into I/Q)
+
+Neural Network vs Memory Polynomial Trade-offs:
+
++-------------------+------------------+-------------------+
+| Aspect            | NN-DPD           | MP/LS-DPD         |
++-------------------+------------------+-------------------+
+| Expressiveness    | Arbitrary        | Polynomial only   |
+| Training          | Iterative (slow) | Closed-form (fast)|
+| Interpretability  | Black box        | Physical meaning  |
+| Hyperparameters   | Many             | Few               |
+| Generalization    | Risk of overfit  | Well-understood   |
++-------------------+------------------+-------------------+
+
+The implementation follows TensorFlow/Keras Layer conventions for seamless
+integration with Sionna and standard training loops.
 """
 
 import tensorflow as tf
@@ -11,15 +35,61 @@ from tensorflow.keras.layers import Layer, Dense, LayerNormalization, PReLU
 
 class ResidualBlock(Layer):
     """
-    Fully-connected residual block with configurable depth.
+    Fully-connected residual block with layer normalization and PReLU.
 
-    Uses PReLU activation with learnable negative slope, allowing the network
-    to optimize how negative values are handled. This is important for DPD
-    corrections that can be both positive and negative.
+    Implements the pre-activation residual block pattern where normalization
+    and activation precede each linear transformation. This ordering improves
+    gradient flow and training stability compared to post-activation.
 
-    Args:
-        units: Number of units in each dense layer
-        num_layers: Number of dense layers in the block (default: 2)
+    Parameters
+    ----------
+    units : int, optional
+        Number of units in each dense layer. Default: 64.
+    num_layers : int, optional
+        Number of dense layers in the block. Default: 2.
+    **kwargs
+        Additional keyword arguments passed to Keras Layer.
+
+    Attributes
+    ----------
+    units : int
+        Number of units per layer.
+    num_layers : int
+        Number of layers in block.
+
+    Notes
+    -----
+    **Why PReLU?**
+
+    DPD corrections can be both positive and negative. PReLU (Parametric
+    ReLU) has a learnable slope for negative inputs, allowing the network
+    to optimize how negative corrections are handled. Standard ReLU would
+    zero out negative values, limiting the correction space.
+
+    **Why Layer Normalization?**
+
+    Layer normalization (vs batch normalization) normalizes across features
+    rather than batch dimension. This is important for DPD where:
+
+    - Batch sizes may be small or variable
+    - Each sample should be processed consistently
+    - Inference behavior should match training exactly
+
+    **Skip Connection:**
+
+    The residual connection ``output = F(x) + x`` ensures:
+
+    - Gradient can flow directly through the skip path
+    - Block can learn to output zero (identity mapping)
+    - Deeper networks remain trainable
+
+    Example
+    -------
+    >>> block = ResidualBlock(units=64, num_layers=2)
+    >>> x = tf.random.normal([16, 100, 64])  # [batch, time, features]
+    >>> y = block(x)
+    >>> y.shape
+    TensorShape([16, 100, 64])
     """
 
     def __init__(self, units: int = 64, num_layers: int = 2, **kwargs):
@@ -30,9 +100,12 @@ class ResidualBlock(Layer):
         self.units = int(units)
         self.num_layers = int(num_layers)
 
+        # Pre-activation pattern: norm -> activation -> dense
         self._layer_norms = [
             LayerNormalization(axis=-1) for _ in range(self.num_layers)
         ]
+        # PReLU with shared slope across time dimension (axis=1).
+        # Each feature can have its own slope.
         self._activations = [PReLU(shared_axes=[1]) for _ in range(self.num_layers)]
         self._dense_layers = [
             Dense(self.units, activation=None, kernel_initializer="glorot_uniform")
@@ -40,6 +113,19 @@ class ResidualBlock(Layer):
         ]
 
     def call(self, inputs):
+        """
+        Forward pass through residual block.
+
+        Parameters
+        ----------
+        inputs : tf.Tensor
+            Input tensor, shape ``[batch, time, units]``.
+
+        Returns
+        -------
+        tf.Tensor
+            Output tensor with residual connection, same shape as input.
+        """
         z = inputs
         for ln, act, dense in zip(
             self._layer_norms, self._activations, self._dense_layers
@@ -47,25 +133,87 @@ class ResidualBlock(Layer):
             z = ln(z)
             z = act(z)
             z = dense(z)
+        # Residual connection: add input to transformed output.
         return z + inputs
 
 
 class NeuralNetworkDPD(Layer):
     """
-    Neural Network based Digital Pre-Distortion using Indirect Learning Architecture.
+    Fully-connected feedforward neural network predistorter with memory.
 
-    Inherits from tf.keras.layers.Layer for Sionna compatibility and differentiability.
-    Supports batched operation where each batch element is processed independently.
+    Implements a neural network that learns the PA inverse function through
+    gradient-descent and backpropagation. Memory effects are captured via
+    a sliding window over input samples, similar in concept to the
+    memory polynomial approach.
 
-    The neural network uses a sliding window to capture memory effects.
-    Complex signals are handled by splitting into real/imaginary components.
-    A skip connection ensures initial behavior is close to identity.
+    Parameters
+    ----------
+    memory_depth : int, optional
+        Number of samples in sliding window. Larger values capture longer
+        memory effects but increase computation. Default: 4.
+    num_filters : int, optional
+        Number of units in hidden layers. Controls model capacity.
+        Default: 64.
+    num_layers_per_block : int, optional
+        Number of dense layers per residual block. Default: 2.
+    num_res_blocks : int, optional
+        Number of residual blocks. More blocks increase depth and capacity.
+        Default: 3.
+    **kwargs
+        Additional keyword arguments passed to Keras Layer.
 
-    Args:
-        memory_depth: Number of samples in sliding window (default: 4)
-        num_filters: Number of units in hidden layers (default: 64)
-        num_layers_per_block: Layers per residual block (default: 2)
-        num_res_blocks: Number of residual blocks (default: 3)
+    Attributes
+    ----------
+    _memory_depth : int
+        Sliding window size.
+    _num_filters : int
+        Hidden layer width.
+    _num_res_blocks : int
+        Number of residual blocks.
+
+    Notes
+    -----
+    **Identity Initialization:**
+
+    The output layer is initialized to zeros, so the initial network output
+    is just the skip connection (identity function). This ensures:
+
+    - Initial predistorter is pass-through (no distortion)
+    - Training starts from a reasonable point
+    - Network learns corrections relative to identity
+
+    **Complex Signal Handling:**
+
+    Complex signals are split into real and imaginary parts for processing.
+    This is necessary because standard neural network layers operate on
+    real-valued tensors. The network learns to process I and Q jointly,
+    capturing their correlations.
+
+    **Causal Processing:**
+
+    The sliding window only includes current and past samples (causal).
+    This is appropriate for real-time DPD where future samples are
+    unavailable. Zero-padding handles the initial transient.
+
+    **miscellaneous:**
+
+    - Input must be complex64 tensor
+    - Batch dimension is optional (will be added if missing)
+    - Output has same shape as input
+    - Initial (untrained) output equals input (identity)
+
+    Example
+    -------
+    >>> dpd = NeuralNetworkDPD(memory_depth=4, num_filters=64)
+    >>> x = tf.complex(tf.random.normal([16, 1024]), tf.random.normal([16, 1024]))
+    >>> y = dpd(x)
+    >>> y.shape
+    TensorShape([16, 1024])
+
+    See Also
+    --------
+    LeastSquaresDPD : Polynomial-based DPD with closed-form training.
+    NN_DPDSystem : System wrapper for NN-DPD training and inference.
     """
 
     def __init__(
@@ -83,10 +231,10 @@ class NeuralNetworkDPD(Layer):
         self._num_layers_per_block = int(num_layers_per_block)
         self._num_res_blocks = int(num_res_blocks)
 
-        # Input size: memory_depth samples × 2 (real + imag)
+        # Input feature size: memory_depth samples × 2 (real + imaginary).
         self._input_size = 2 * self._memory_depth
 
-        # Input projection layer
+        # Project input features to hidden dimension.
         self._input_dense = Dense(
             self._num_filters,
             activation=None,
@@ -94,7 +242,7 @@ class NeuralNetworkDPD(Layer):
             name="input_projection",
         )
 
-        # Residual stack
+        # Stack of residual blocks for deep nonlinear processing.
         self._res_blocks = [
             ResidualBlock(
                 units=self._num_filters,
@@ -103,8 +251,8 @@ class NeuralNetworkDPD(Layer):
             for _ in range(self._num_res_blocks)
         ]
 
-        # Output layer: 2 outputs (real and imaginary parts)
-        # Initialize to zeros so initial output is just the skip connection
+        # Output projection: hidden -> [real, imag].
+        # Zero initialization ensures initial output is identity (via skip).
         self._output_dense = Dense(
             2,
             activation=None,
@@ -115,93 +263,118 @@ class NeuralNetworkDPD(Layer):
 
     def _create_sliding_windows_batched(self, signal):
         """
-        Create sliding window features from batched complex signal.
+        Extract sliding window features from batched complex signal.
 
-        Args:
-            signal: [B, num_samples] complex tensor
+        Creates a causal sliding window where each output position sees
+        the current sample and (memory_depth - 1) past samples.
 
-        Returns:
-            features: [B, num_samples, 2 * memory_depth] real tensor (float32)
+        Parameters
+        ----------
+        signal : tf.Tensor
+            Complex input signal, shape ``[batch, num_samples]``.
+
+        Returns
+        -------
+        tf.Tensor
+            Feature tensor, shape ``[batch, num_samples, 2 * memory_depth]``.
+            Layout per sample: ``[real[n-M+1], ..., real[n], imag[n-M+1], ..., imag[n]]``
+
+        Notes
+        -----
+        Zero-padding at the start ensures output length equals input length.
         """
-        # signal: [B, num_samples]
         batch_size = tf.shape(signal)[0]
 
-        # Pad signal at the beginning for causal processing:
-        # [B, memory_depth-1 + num_samples]
+        # Zero-pad at start for causal processing.
+        # After padding: [B, memory_depth - 1 + num_samples]
         padding = self._memory_depth - 1
         pad_zeros = tf.zeros([batch_size, padding], dtype=signal.dtype)
         padded_signal = tf.concat([pad_zeros, signal], axis=1)
 
-        # Create sliding windows using tf.signal.frame
-        # Input: [B, padded_length], Output: [B, num_samples, memory_depth]
+        # Extract sliding windows using tf.signal.frame.
+        # Output: [B, num_samples, memory_depth]
         windows = tf.signal.frame(padded_signal, self._memory_depth, 1, axis=1)
 
-        # Split into real and imaginary parts (as float32)
-        # [B, num_samples, memory_depth] each
+        # Split complex into real/imag and convert to float32.
         real_part = tf.cast(tf.math.real(windows), tf.float32)
         imag_part = tf.cast(tf.math.imag(windows), tf.float32)
 
-        # Concatenate along last axis: [B, num_samples, 2 * memory_depth]
+        # Concatenate: [B, num_samples, 2 * memory_depth]
         features = tf.concat([real_part, imag_part], axis=-1)
 
         return features
 
     def _output_to_complex(self, output):
         """
-        Convert network output to complex signal.
+        Convert real-valued network output to complex signal.
 
-        Args:
-            output: [B, num_samples, 2] or [num_samples, 2] real tensor
+        Parameters
+        ----------
+        output : tf.Tensor
+            Network output with real/imag channels, shape ``[..., 2]``.
 
-        Returns:
-            [B, num_samples] or [num_samples] complex tensor
+        Returns
+        -------
+        tf.Tensor
+            Complex signal, shape ``[...]`` (last dimension removed).
         """
         return tf.complex(output[..., 0], output[..., 1])
 
     def call(self, x, training=None):
         """
-        Apply predistortion to input signal.
+        Apply neural network predistortion to input signal.
 
-        Args:
-            x: [B, num_samples] complex tensor (batched)
-               or [num_samples] complex tensor (unbatched)
+        Parameters
+        ----------
+        x : tf.Tensor
+            Input signal, shape ``[batch, num_samples]`` or ``[num_samples]``.
+            Must be complex dtype.
+        training : bool or None, optional
+            Training mode flag. Affects dropout/batch norm if present.
+            Currently unused but included for Keras compatibility.
 
-        Returns:
-            Same shape as input - predistorted signal
+        Returns
+        -------
+        tf.Tensor
+            Predistorted signal, same shape as input.
+
+        Notes
+        -----
+        The network computes ``y = NN(x) + x`` where the skip connection
+        ensures identity behavior when NN outputs zeros (initial state).
         """
-        # Handle unbatched input by adding batch dimension
+        # Handle unbatched input by temporarily adding batch dimension.
         input_ndims = len(x.shape)
         if input_ndims == 1:
-            x = tf.expand_dims(x, axis=0)  # [1, num_samples]
+            x = tf.expand_dims(x, axis=0)
 
         x = tf.cast(x, tf.complex64)
 
-        # Create sliding window features: [B, num_samples, 2 * memory_depth]
+        # Extract sliding window features: [B, N, 2M]
         features = self._create_sliding_windows_batched(x)
 
-        # Extract current sample for skip connection (last sample in each window)
-        # features layout per sample: [real(t-M+1),...,real(t), imag(t-M+1),...,imag(t)]
-        skip_real = features[..., self._memory_depth - 1]  # [B, num_samples]
-        skip_imag = features[..., 2 * self._memory_depth - 1]  # [B, num_samples]
-        skip = tf.stack([skip_real, skip_imag], axis=-1)  # [B, num_samples, 2]
+        # Extract current sample for skip connection.
+        # In the feature layout, current real is at index (M-1),
+        # current imag is at index (2M-1).
+        skip_real = features[..., self._memory_depth - 1]
+        skip_imag = features[..., 2 * self._memory_depth - 1]
+        skip = tf.stack([skip_real, skip_imag], axis=-1)  # [B, N, 2]
 
-        # Forward pass through network
-        # Dense layers operate on last dimension, so [B, num_samples, input_size] works
-        z = self._input_dense(features)  # [B, num_samples, num_filters]
+        # Forward through network.
+        z = self._input_dense(features)  # [B, N, num_filters]
 
         for block in self._res_blocks:
             z = block(z)
 
-        z = self._output_dense(z)  # [B, num_samples, 2]
+        z = self._output_dense(z)  # [B, N, 2]
 
-        # Add skip connection: output = NN(x) + x
-        # This ensures initial behavior is identity (when NN outputs zeros)
+        # Skip connection: network learns correction relative to identity.
         z = z + skip
 
-        # Convert to complex: [B, num_samples]
+        # Convert back to complex.
         y = self._output_to_complex(z)
 
-        # Remove batch dimension if input was unbatched
+        # Remove batch dimension if input was unbatched.
         if input_ndims == 1:
             y = tf.squeeze(y, axis=0)
 

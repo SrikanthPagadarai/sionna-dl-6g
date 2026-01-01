@@ -1,7 +1,17 @@
-"""Neural Network DPD System for training and inference.
+"""
+Neural network DPD system with gradient-based training.
 
-Extends base DPDSystem with Neural Network-based Digital Pre-Distortion.
-Uses gradient-based optimization with indirect learning architecture.
+This subclass provides the complete NN-DPD system that combines the base
+DPDSystem infrastructure with a feedforward neural network predistorter.
+Unlike LS-DPD which computes coefficients in closed form, NN-DPD uses
+backpropagation to iteratively optimize the network weights.
+
+This system implements the indirect learning architecture where the same
+network serves as both predistorter (during inference) and postdistorter
+(during training).
+
+The normalization steps are critical for NN-DPD to ensure stable gradient
+flow regardless of the actual signal power levels.
 """
 
 import tensorflow as tf
@@ -13,30 +23,87 @@ from .nn_dpd import NeuralNetworkDPD
 
 class NN_DPDSystem(DPDSystem):
     """
-    Neural Network DPD system for training and inference.
+    Complete NN-DPD system with gradient-based training.
 
-    Extends DPDSystem with NN-based predistortion using indirect learning.
+    Extends the base DPDSystem with a feedforward neural network predistorter
+    trained via backpropagation. The indirect learning architecture trains
+    the network to invert the PA, then uses the same network for predistortion.
 
-    For NN-DPD:
-        Returns indirect learning loss: ||DPD(PA_output/G) - predistorter_output||²
+    Parameters
+    ----------
+    training : bool
+        Operating mode. True enables gradient computation for training.
+    config : Config
+        Configuration object with RF and OFDM parameters.
+    dpd_memory_depth : int, optional
+        Sliding window size for memory effects. Default: 4.
+    dpd_num_filters : int, optional
+        Hidden layer width (model capacity). Default: 64.
+    dpd_num_layers_per_block : int, optional
+        Dense layers per residual block. Default: 2.
+    dpd_num_res_blocks : int, optional
+        Number of residual blocks (network depth). Default: 3.
+    rms_input_dbm : float, optional
+        Target RMS power for PA input in dBm. Default: 0.5.
+    pa_sample_rate : float, optional
+        PA operating sample rate in Hz. Default: 122.88 MHz.
+    **kwargs
+        Additional keyword arguments passed to base DPDSystem.
 
-    The indirect learning approach:
-    1. Generate baseband signal x
-    2. Upsample to PA sample rate
-    3. Apply predistorter: u = DPD(x)
-    4. Pass through PA: y = PA(u)
-    5. Normalize by PA gain: y_norm = y / G
-    6. Train postdistorter: loss = ||DPD(y_norm) - u||²
+    Attributes
+    ----------
+    dpd : NeuralNetworkDPD
+        The neural network predistorter layer.
 
-    Args:
-        training: Whether in training mode
-        config: Config instance with system parameters
-        dpd_memory_depth: DPD memory depth (default: 4)
-        dpd_num_filters: DPD hidden layer size (default: 64)
-        dpd_num_layers_per_block: Layers per residual block (default: 2)
-        dpd_num_res_blocks: Number of residual blocks (default: 3)
-        rms_input_dbm: Target input RMS power in dBm (default: 0.5)
-        pa_sample_rate: PA sample rate in Hz (default: 122.88e6)
+    Notes
+    -----
+    **Why Normalize Inputs for NN-DPD?**
+
+    Normalizing to unit power:
+
+    - Keeps activations in a well-behaved range
+    - Ensures consistent gradient magnitudes
+    - Makes hyperparameters (learning rate) transferable across power levels
+
+    The scale factor is saved and reapplied after predistortion.
+
+    **Loss Scaling:**
+
+    The MSE loss is scaled by 1000 for better monitoring. Raw MSE values
+    for normalized signals are typically very small (1e-4 to 1e-6), making
+    progress hard to track. Scaling doesn't affect optimization (just
+    scales gradients uniformly).
+
+    **Gradient Flow:**
+
+    During training, gradients flow only through the postdistorter path.
+    The predistorter output ``u`` is treated as a fixed target via
+    ``tf.stop_gradient()``. This is the standard indirect learning setup.
+
+    **miscellaneous:**
+
+    - ``estimate_pa_gain()`` must be called before training
+    - For training, use with ``tf.GradientTape`` to compute gradients
+    - Training forward returns scalar loss
+    - Inference forward returns dict with PA outputs
+
+    Example
+    -------
+    >>> config = Config()
+    >>> system = NN_DPDSystem(training=True, config=config)
+    >>> system.estimate_pa_gain()
+    >>>
+    >>> optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+    >>> for step in range(1000):
+    ...     with tf.GradientTape() as tape:
+    ...         loss = system(batch_size=16)
+    ...     grads = tape.gradient(loss, system.trainable_variables)
+    ...     optimizer.apply_gradients(zip(grads, system.trainable_variables))
+
+    See Also
+    --------
+    LS_DPDSystem : Least-squares DPD with closed-form training.
+    NeuralNetworkDPD : The underlying neural network layer.
     """
 
     def __init__(
@@ -59,7 +126,7 @@ class NN_DPDSystem(DPDSystem):
             **kwargs,
         )
 
-        # Neural Network DPD layer
+        # Instantiate the neural network predistorter.
         self._dpd = NeuralNetworkDPD(
             memory_depth=dpd_memory_depth,
             num_filters=dpd_num_filters,
@@ -67,35 +134,48 @@ class NN_DPDSystem(DPDSystem):
             num_res_blocks=dpd_num_res_blocks,
         )
 
-        # Loss function with scaling for better gradient flow
+        # MSE loss for indirect learning objective.
         self._loss_fn = tf.keras.losses.MeanSquaredError()
-        self._loss_scale = 1000.0  # Scale up loss for better monitoring
+        # Scale factor for readable loss values during training.
+        # Does not affect optimization dynamics (uniform scaling).
+        self._loss_scale = 1000.0
 
     def _forward_signal_path(self, x):
         """
-        Forward signal through predistorter and PA (steps 1-3 of indirect learning).
+        Forward signal through predistorter and PA with normalization.
 
-        For NN-DPD: Input is normalized for better NN conditioning.
+        NN-DPD normalizes inputs to unit power for stable network behavior.
+        The scale factor is preserved to restore original power after
+        predistortion.
 
-        Args:
-            x: [B, num_samples] input signal at PA rate
+        Parameters
+        ----------
+        x : tf.Tensor
+            Input signal at PA rate, shape ``[batch, num_samples]``.
 
-        Returns:
-            dict with:
-                - u: predistorted signal (original scale)
-                - u_norm: predistorted signal (normalized scale, for NN loss)
-                - y_comp: gain-compensated PA output
-                - x_scale: input normalization scale factor
+        Returns
+        -------
+        dict
+            Signal path outputs:
+
+            - ``u`` : Predistorted signal at original scale
+            - ``u_norm`` : Predistorted signal at normalized scale
+            - ``y_comp`` : Gain-compensated PA output
+            - ``x_scale`` : Scale factor to restore original power
         """
-        # NN-DPD: Normalize input for better conditioning
+        # Normalize input to unit power for stable NN behavior.
         x_norm, x_scale = self._normalize_to_unit_power(x)
+
+        # Apply predistorter in normalized domain.
         u_norm = self._dpd(x_norm, training=False)
+
+        # Restore original scale for PA input.
         u = u_norm * tf.cast(x_scale, u_norm.dtype)
 
-        # Step 2: Pass through PA
+        # Pass predistorted signal through PA.
         y = self._pa(u)
 
-        # Step 3: Compensate for PA gain
+        # Divide by PA gain to isolate nonlinear distortion.
         y_comp = y / tf.cast(self._pa_gain, y.dtype)
 
         return {
@@ -107,36 +187,55 @@ class NN_DPDSystem(DPDSystem):
 
     def _training_forward(self, x):
         """
-        Training forward pass with indirect learning.
+        Compute indirect learning loss for gradient-based training.
 
-        Complete indirect learning architecture:
-            Step 1: Apply predistorter: u = DPD(x)
-            Step 2: Pass through PA: y = PA(u)
-            Step 3: Compensate for PA gain: y_comp = y / G
-            Step 4: Apply postdistorter: u_hat = DPD(y_comp)
-            Step 5: Compute loss: ||u - u_hat||²
+        Implements the 5-step indirect learning architecture:
 
-        Args:
-            x: [B, num_samples] input signal at PA rate
+        1. Apply predistorter: ``u = DPD(x_norm) * scale``
+        2. Pass through PA: ``y = PA(u)``
+        3. Compensate for gain: ``y_comp = y / G``
+        4. Apply postdistorter: ``u_hat = DPD(y_comp_norm)``
+        5. Compute loss: ``MSE(u_norm, u_hat)``
 
-        Returns:
-            scalar MSE loss
+        The loss trains the network to invert the PA. After training,
+        the same network serves as a predistorter.
+
+        Parameters
+        ----------
+        x : tf.Tensor
+            Input signal at PA rate, shape ``[batch, num_samples]``.
+
+        Returns
+        -------
+        tf.Tensor
+            Scalar MSE loss (scaled for readability).
+
+        Notes
+        -----
+        ``tf.stop_gradient()`` on the target ``u_norm`` ensures gradients
+        only flow through the postdistorter path, not the predistorter.
+        This is the standard indirect learning formulation.
+
+        The loss is computed in the normalized domain to ensure consistent
+        gradient magnitudes regardless of actual signal power.
         """
-        # Steps 1-3: Forward through predistorter and PA
+        # Steps 1-3: Forward through predistorter and PA.
         signals = self._forward_signal_path(x)
         u_norm = signals["u_norm"]
         y_comp = signals["y_comp"]
 
-        # Stop gradient on target (predistorter output)
+        # Target is predistorter output (gradient stopped).
+        # We want postdistorter to match what predistorter produced.
         u_target = tf.stop_gradient(u_norm)
 
-        # Normalize PA output for postdistorter
+        # Normalize PA output for postdistorter input.
         y_norm, _ = self._normalize_to_unit_power(y_comp)
 
-        # Step 4: Apply postdistorter (this is what we're training)
+        # Step 4: Apply postdistorter (this path receives gradients).
         u_hat_norm = self._dpd(y_norm, training=True)
 
-        # Step 5: Compute loss in normalized domain
+        # Step 5: Compute MSE loss on real/imag components.
+        # Split complex into [real, imag] for standard MSE computation.
         u_target_ri = tf.stack(
             [tf.math.real(u_target), tf.math.imag(u_target)], axis=-1
         )
@@ -149,25 +248,34 @@ class NN_DPDSystem(DPDSystem):
 
     def _inference_forward(self, x):
         """
-        Inference forward pass.
+        Run inference to compare PA output with and without DPD.
 
-        Args:
-            x: [B, num_samples] input signal at PA rate
+        Parameters
+        ----------
+        x : tf.Tensor
+            Input signal at PA rate, shape ``[batch, num_samples]``.
 
-        Returns:
-            dict with PA input and outputs
+        Returns
+        -------
+        dict
+            Inference outputs:
+
+            - ``pa_input`` : Original input signal
+            - ``pa_output_no_dpd`` : PA output without predistortion
+            - ``pa_output_with_dpd`` : PA output with predistortion
+            - ``predistorted`` : DPD output (before PA)
         """
-        # PA output without DPD
+        # Baseline: PA output without any predistortion.
         pa_output_no_dpd = self._pa(x)
 
-        # NN-DPD: Normalize for DPD, apply DPD, scale back
+        # Apply predistorter with normalization.
         x_norm, x_scale = self._normalize_to_unit_power(x)
         x_predistorted_norm = self._dpd(x_norm, training=False)
         x_predistorted = x_predistorted_norm * tf.cast(
             x_scale, x_predistorted_norm.dtype
         )
 
-        # Pass through PA
+        # Pass predistorted signal through PA.
         pa_output_with_dpd = self._pa(x_predistorted)
 
         return {

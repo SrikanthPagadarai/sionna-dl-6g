@@ -1,11 +1,24 @@
-"""TensorFlow graph-mode compatible interpolator for signal upsampling.
+"""
+TensorFlow graph-mode compatible interpolator for signal upsampling.
 
-This module provides Interpolator, a drop-in replacement for Interpolator
-that uses Sionna's native signal processing functions (Upsampling, Downsampling,
-convolve) for GPU acceleration and graph-mode compatibility.
+Rational resampler layer that converts signals between the baseband sample
+rate (e.g., 15.36 MHz in this demo) and the desired sample rate (e.g., the
+PA operating rate of 122.88 MHz in this demo). The implementation uses
+Sionna's native signal processing primitives for GPU acceleration and
+``tf.function`` compatibility.
 
-The implementation uses Kaiser-windowed FIR filter design with configurable
-parameters for excellent stopband attenuation (>100 dB with defaults).
+The core algorithm is polyphase-equivalent resampling via upsample-filter-downsample,
+with a Kaiser-windowed FIR anti-imaging filter designed for excellent stopband
+attenuation (>100 dB with default parameters).
+
+Notes
+-----
+**Why not scipy.signal.resample_poly directly?**
+
+While scipy's resample_poly is efficient, it operates on NumPy arrays and
+breaks TensorFlow's computation graph. This implementation achieves the same
+mathematical result using Sionna's ``Upsampling``, ``Downsampling``, and
+``convolve`` operations, enabling end-to-end gradient flow for DPD training.
 """
 
 import tensorflow as tf
@@ -18,25 +31,77 @@ from sionna.phy.signal import Upsampling, Downsampling, convolve
 
 class Interpolator(tf.keras.layers.Layer):
     """
-    TensorFlow graph-mode compatible interpolator using Sionna primitives.
+    Rational sample rate converter using polyphase-equivalent resampling.
 
-    Performs polyphase-equivalent resampling:
-    1. Upsample by factor L (insert L-1 zeros between samples) via Sionna Upsampling
-    2. Apply FIR anti-imaging filter via Sionna convolve
-    3. Downsample by factor M (take every M-th sample) via Sionna Downsampling
+    Converts between sample rates by a rational factor L/M, where L is the
+    upsampling factor and M is the downsampling factor. The rate ratio is
+    automatically converted to a reduced fraction for efficiency.
 
-    Each batch element is processed independently along the sample axis,
-    which is the correct behavior for independent OFDM frames.
+    Parameters
+    ----------
+    input_rate : float
+        Input sample rate in Hz (e.g., 15.36e6 for OFDM baseband).
+    output_rate : float
+        Desired output sample rate in Hz (e.g., 122.88e6 for PA).
+    max_denominator : int
+        Maximum denominator when approximating the rate ratio as a fraction.
+        Higher values give more accurate rate conversion at the cost of
+        longer filters. Defaults to 1000.
+    half_len_mult : int
+        Filter half-length multiplier. The filter length is
+        ``2 * half_len_mult * max(L, M) + 1``. Defaults to 20, which
+        provides >100 dB stopband attenuation.
+    kaiser_beta : float
+        Kaiser window shape parameter. Higher values give better stopband
+        attenuation but wider transition band. Defaults to 8.0 for >100 dB.
 
-    Filter design uses Kaiser-windowed FIR with configurable parameters
-    for excellent stopband attenuation (>100 dB with defaults).
+    Attributes
+    ----------
+    _upsample_factor : int
+        Upsampling factor L (numerator of rate ratio).
+    _downsample_factor : int
+        Downsampling factor M (denominator of rate ratio).
+    _output_rate : float
+        Actual output rate (may differ slightly from requested due to
+        rational approximation).
+    _filter_coeffs : tf.Tensor
+        FIR filter coefficients as a TensorFlow constant.
 
-    Args:
-        input_rate: Input sample rate (Hz)
-        output_rate: Output sample rate (Hz)
-        max_denominator: Maximum denominator when converting to fraction (default: 1000)
-        half_len_mult: Filter half-length multiplier (default: 20 for >100 dB stopband)
-        kaiser_beta: Kaiser window beta parameter (default: 8.0 for >100 dB stopband)
+    Notes
+    -----
+    **Algorithm (Polyphase Resampling):**
+
+    1. **Upsample by L**: Insert L-1 zeros between each input sample.
+       This creates spectral images at multiples of the original Nyquist rate.
+
+    2. **Anti-imaging filter**: Apply a lowpass FIR filter with cutoff at
+       ``min(input_rate, output_rate) / 2`` to remove spectral images.
+
+    3. **Downsample by M**: Keep every M-th sample.
+
+    **miscellaneous:**
+
+    - Input must be complex64 with shape ``[batch_size, num_samples]``
+    - Input and output rates must be positive
+    - Output length is approximately ``num_samples * L / M``
+    - Output sample rate equals ``input_rate * L / M``
+
+    **Filter Design Rationale:**
+
+    The Kaiser window is chosen because it provides a near-optimal trade-off
+    between main lobe width and side lobe level, controlled by a single
+    parameter (beta). With beta=8.0 and half_len_mult=20, the stopband
+    attenuation exceeds 100 dB, ensuring spectral images are sufficiently
+    suppressed to meet typical PA spurious emission requirements.
+
+    Example
+    -------
+    >>> # Upsample from 15.36 MHz to 122.88 MHz (8x)
+    >>> interp = Interpolator(input_rate=15.36e6, output_rate=122.88e6)
+    >>> x = tf.complex(tf.random.normal([16, 1024]), tf.random.normal([16, 1024]))
+    >>> y, out_rate = interp(x)
+    >>> y.shape  # [16, 8192]
+    >>> out_rate  # 122880000.0
     """
 
     def __init__(
@@ -50,43 +115,51 @@ class Interpolator(tf.keras.layers.Layer):
     ):
         super().__init__(**kwargs)
 
-        # Convert rate ratio to fraction L/M
+        # Convert rate ratio to fraction L/M using continued fraction approximation.
+        # This finds the best rational approximation within the denominator limit.
         frac = Fraction(output_rate / input_rate).limit_denominator(max_denominator)
         self._upsample_factor = frac.numerator  # L
         self._downsample_factor = frac.denominator  # M
 
         self._input_rate = input_rate
+        # Actual output rate may differ slightly from requested due to rational approx
         self._output_rate = input_rate * frac.numerator / frac.denominator
 
-        # Reduce by GCD (matching scipy)
+        # Reduce L and M by their GCD for computational efficiency.
+        # This matches scipy.signal.resample_poly behavior.
         g = gcd(self._upsample_factor, self._downsample_factor)
         up_g = self._upsample_factor // g
         down_g = self._downsample_factor // g
 
-        # Design anti-imaging filter matching scipy.signal.resample_poly
-        # Filter length formula: 2 * (half_len_mult * max(up, down)) + 1
+        # --- Anti-imaging FIR filter design ---
+        # Filter length scales with max(L, M) to maintain transition bandwidth
+        # relative to the lower of the two sample rates.
         max_rate = max(up_g, down_g)
         half_len = half_len_mult * max_rate
         n_taps = 2 * half_len + 1
 
-        # Cutoff frequency normalized to upsampled Nyquist rate
+        # Cutoff at the lower Nyquist rate (normalized to upsampled rate)
+        # This ensures no aliasing when downsampling.
         cutoff = 1.0 / max_rate
 
-        # Design lowpass filter with Kaiser window
+        # Design symmetric lowpass filter with Kaiser window.
+        # firwin returns linear-phase (symmetric) coefficients.
         filter_coeffs = firwin(n_taps, cutoff, window=("kaiser", kaiser_beta))
 
-        # Scale filter to compensate for zero-insertion gain loss
+        # Scale filter by L to compensate for energy loss from zero-insertion.
+        # Without this, upsampling would reduce signal amplitude by factor L.
         filter_coeffs = filter_coeffs * self._upsample_factor
 
-        # Store filter as TF constant (complex for use with Sionna convolve)
+        # Store as TF constant for graph-mode compatibility
         self._filter_coeffs = tf.constant(filter_coeffs, dtype=tf.float32)
         self._filter_length = n_taps
         self._half_len = half_len
 
-        # Create Sionna upsampling/downsampling blocks
-        # axis=-1 operates on the sample dimension for [B, N] input
+        # --- Create Sionna resampling blocks ---
+        # axis=-1 processes along the sample dimension for [B, N] input
         self._upsampler = Upsampling(samples_per_symbol=self._upsample_factor, axis=-1)
 
+        # Downsampler only needed if M > 1
         if self._downsample_factor > 1:
             self._downsampler = Downsampling(
                 samples_per_symbol=self._downsample_factor, axis=-1
@@ -96,37 +169,58 @@ class Interpolator(tf.keras.layers.Layer):
 
     def call(self, x):
         """
-        Interpolate input tensor using Sionna operations (graph-compatible).
+        Resample input signal to the target sample rate.
 
-        Each batch element is processed independently along the sample axis.
+        Parameters
+        ----------
+        x : tf.Tensor
+            Input signal with shape ``[batch_size, num_samples]`` and dtype
+            complex64. Each batch element is resampled independently.
 
-        Args:
-            x: [B, num_samples] complex64 tensor
+        Returns
+        -------
+        x_resampled : tf.Tensor
+            Resampled signal with shape ``[batch_size, num_samples * L / M]``
+            and dtype complex64.
+        output_rate : float
+            Actual output sample rate in Hz. This may differ slightly from
+            the requested rate due to rational approximation.
 
-        Returns:
-            Tuple of (interpolated tensor [B, num_samples * factor], output_rate)
+        Notes
+        -----
+        **Implementation Details:**
+
+        The 'full' convolution padding is used to ensure all input samples
+        contribute to the output. The group delay compensation then extracts
+        the correctly aligned portion of the filtered signal.
+
+        For a symmetric FIR filter of length K, the group delay is (K-1)/2
+        samples. The output is trimmed to maintain the expected length
+        relationship between input and output.
         """
-        # Ensure complex64
+        # Ensure complex64 for consistent dtype throughout the pipeline
         x = tf.cast(x, tf.complex64)
 
-        # Step 1: Upsample (insert zeros) using Sionna
+        # --- Step 1: Upsample by L (zero insertion) ---
+        # Inserts L-1 zeros between each sample, creating spectral images
         # [B, N] -> [B, N * L]
         upsampled = self._upsampler(x)
         n_upsampled = tf.shape(upsampled)[-1]
 
-        # Step 2: Apply anti-imaging FIR filter using Sionna convolve
-        # Use 'full' padding: output length = N*L + K - 1
+        # --- Step 2: Anti-imaging lowpass filter ---
+        # Removes spectral images created by upsampling.
+        # 'full' padding: output length = N*L + K - 1
         filter_complex = tf.cast(self._filter_coeffs, tf.complex64)
         filtered = convolve(upsampled, filter_complex, padding="full", axis=-1)
 
-        # Compensate for filter group delay
-        # For a symmetric FIR filter of length K, group delay = (K-1)/2 samples
-        # With 'full' convolution, the aligned output starts at index (K-1)//2
-        # and we want N*L output samples
+        # Compensate for filter group delay to align output with input.
+        # For symmetric FIR of length K: group_delay = (K-1)/2 samples.
+        # Extract the centered portion to get N*L output samples.
         group_delay = (self._filter_length - 1) // 2
         filtered = filtered[..., group_delay : group_delay + n_upsampled]
 
-        # Step 3: Downsample using Sionna (if needed)
+        # --- Step 3: Downsample by M (decimation) ---
+        # Keep every M-th sample. Only needed if M > 1.
         if self._downsampler is not None:
             x_out = self._downsampler(filtered)
         else:
