@@ -1,3 +1,32 @@
+"""
+Baseline evaluation script for conventional LMMSE receiver.
+
+Evaluates BER/BLER performance of the baseline receiver (LS estimation +
+LMMSE equalization) under both perfect and imperfect CSI conditions. Results
+serve as reference for neural receiver comparison.
+
+Usage
+-----
+::
+
+    python baseline.py
+
+Output Files
+------------
+``results/all_baseline_results_cdlC.npz``:
+    - ``ebno_db``: Eb/N0 values tested
+    - ``perfect_csi``: Boolean array [True, False]
+    - ``ber``: BER array, shape [2, num_snr_points]
+    - ``bler``: BLER array, shape [2, num_snr_points]
+    - ``cdl_model``: Channel model used ("C")
+
+Note
+----
+Perfect CSI provides an upper bound on baseline performance. The gap between
+perfect and imperfect CSI shows the cost of channel estimation errors.
+Compare both against neural receiver results to quantify learned gains.
+"""
+
 import os
 import time
 from typing import Any, Dict, List
@@ -7,13 +36,15 @@ from sionna.phy.utils import sim_ber
 
 from demos.mimo_ofdm_neural_receiver.src.system import System
 
-# User-tunable parameters
+# =============================================================================
+# Simulation Configuration
+# =============================================================================
 base_params: Dict[str, Any] = dict(
     cdl_model="C",
     delay_spread=100e-9,
     carrier_frequency=2.6e9,
     speed=0.0,
-    use_neural_rx=False,
+    use_neural_rx=False,  # Baseline uses conventional LMMSE receiver
     batch_size=32,
     max_mc_iter=1000,
     num_target_block_errors=1000,
@@ -21,11 +52,13 @@ base_params: Dict[str, Any] = dict(
     ebno_db=np.arange(-3, 7, 1),
 )
 
-# parametrizable values
+# Sweep over CSI conditions: perfect (upper bound) and estimated (realistic)
 perfect_csi_values: List[bool] = [True, False]
 
 
-# Run simulation
+# =============================================================================
+# Monte Carlo Simulation Loop
+# =============================================================================
 t0 = time.time()
 all_csi: List[bool] = []
 all_ber: List[np.ndarray] = []
@@ -45,11 +78,10 @@ for perfect_csi in perfect_csi_values:
         use_neural_rx=cfg["use_neural_rx"],
     )
 
-    # Adapter: sim_ber provides scalar ebno_db,
-    # whereas System expects a vector (len == batch_size).
+    # Adapter: sim_ber provides scalar ebno_db, System expects vector
     @tf.function
     def mc_fun(batch_size: tf.Tensor, ebno_db: tf.Tensor):
-        ebno_vec = tf.fill([batch_size], tf.cast(ebno_db, tf.float32))  # (B,)
+        ebno_vec = tf.fill([batch_size], tf.cast(ebno_db, tf.float32))
         return system(batch_size, ebno_vec)
 
     ber, bler = sim_ber(
@@ -73,7 +105,9 @@ for perfect_csi in perfect_csi_values:
 dur_min = (time.time() - t0) / 60.0
 print(f"Total duration: {dur_min:.2f} min")
 
-# Save results
+# =============================================================================
+# Save Results
+# =============================================================================
 out_dir = "results"
 os.makedirs(out_dir, exist_ok=True)
 

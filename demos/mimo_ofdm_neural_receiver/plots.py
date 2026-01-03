@@ -1,15 +1,48 @@
+"""
+Plotting script for BER/BLER visualization.
+
+Generates comparison plots of baseline receiver vs neural receiver performance:
+
+1. **Training loss curve**: BCE loss over iterations (semilogy scale)
+2. **BER plot**: Bit error rate vs Eb/N0 for all receivers
+3. **BLER plot**: Block error rate vs Eb/N0 for all receivers
+
+Usage
+-----
+Run after both baseline.py and inference.py::
+
+    python plots.py
+
+Input Files
+-----------
+- ``results/baseline_results_cdlC.npz``: Baseline BER/BLER
+- ``results/inference_results.npz``: Neural receiver BER/BLER
+- ``results/loss.npy``: Training loss history (optional)
+
+Output Files
+------------
+- ``results/training_loss.png``: Loss curve
+- ``results/ber_cdlC.png``: BER comparison plot
+- ``results/bler_cdlC.png``: BLER comparison plot
+"""
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Files
+# =============================================================================
+# File Paths
+# =============================================================================
 BASELINE_FILE = os.path.join("results", "baseline_results_cdlC.npz")
 INFERENCE_FILE = os.path.join("results", "inference_results.npz")
 LOSS_FILE = os.path.join("results", "loss.npy")
 
 os.makedirs("results", exist_ok=True)
 
-# Load baseline data (single-run)
+# =============================================================================
+# Load Data
+# =============================================================================
+# Baseline results: perfect and imperfect CSI
 data = np.load(BASELINE_FILE, allow_pickle=True)
 ebno_db = data["ebno_db"]
 perfect_csi = data["perfect_csi"]  # shape (2,) typically [True, False]
@@ -17,13 +50,15 @@ ber = data["ber"]  # shape (2, len(ebno_db))
 bler = data["bler"]  # shape (2, len(ebno_db))
 cdl_model = str(data["cdl_model"])
 
-# Load inference results (single-run)
+# Neural receiver inference results
 inf = np.load(INFERENCE_FILE, allow_pickle=True)
 inf_ebno_db = inf["ebno_db"]
 inf_ber = inf["ber"]
 inf_bler = inf["bler"]
 
-# Loss plot (single-run)
+# =============================================================================
+# Training Loss Plot
+# =============================================================================
 if os.path.exists(LOSS_FILE):
     loss = np.load(LOSS_FILE)
     outfile = os.path.join("results", "training_loss.png")
@@ -31,7 +66,7 @@ if os.path.exists(LOSS_FILE):
     plt.semilogy(loss)
     plt.xlabel("iteration")
     plt.ylabel("loss (log scale)")
-    plt.title("Training Loss")
+    plt.title("Training Loss Curve")
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
     plt.savefig(outfile, dpi=300, bbox_inches="tight")
     plt.close()
@@ -39,7 +74,10 @@ if os.path.exists(LOSS_FILE):
 else:
     print(f"Loss file not found: {LOSS_FILE}")
 
-# BER plot (baseline + inference overlay)
+# =============================================================================
+# BER Plot
+# Compares baseline (perfect/imperfect CSI) with neural receiver
+# =============================================================================
 outfile_ber = os.path.join("results", "ber_cdlC.png")
 plt.figure()
 plt.xlabel(r"$E_b/N_0$ (dB)")
@@ -48,12 +86,12 @@ plt.grid(which="both")
 plt.ylim([1e-4, 1.1])
 plt.title(f"BER - CDL-{cdl_model}")
 
-# baseline curves
+# Baseline curves
 for i in range(len(perfect_csi)):
     label = "perfect CSI" if bool(perfect_csi[i]) else "imperfect CSI"
     plt.semilogy(ebno_db, ber[i], label=label, marker="o", linestyle="-")
 
-# overlay inference
+# Neural receiver curve
 plt.semilogy(
     inf_ebno_db, inf_ber, label="NeuralRx (inference)", marker="x", linestyle="--"
 )
@@ -64,7 +102,10 @@ plt.close()
 print(f"Saved BER plot to {outfile_ber}")
 
 
-# BLER plot (baseline + inference overlay)
+# =============================================================================
+# BLER Plot
+# Compares baseline (perfect/imperfect CSI) with neural receiver
+# =============================================================================
 outfile_bler = os.path.join("results", "bler_cdlC.png")
 plt.figure()
 plt.xlabel(r"$E_b/N_0$ (dB)")
@@ -73,12 +114,12 @@ plt.grid(which="both")
 plt.ylim([1e-3, 1.1])
 plt.title(f"BLER - CDL-{cdl_model}")
 
-# baseline curves
+# Baseline curves
 for i in range(len(perfect_csi)):
     label = "perfect CSI" if bool(perfect_csi[i]) else "imperfect CSI"
     plt.semilogy(ebno_db, bler[i], label=label, marker="o", linestyle="-")
 
-# overlay inference
+# Neural receiver curve
 plt.semilogy(
     inf_ebno_db, inf_bler, label="NeuralRx (inference)", marker="x", linestyle="--"
 )
