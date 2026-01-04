@@ -3,7 +3,7 @@ Visualization script for PUSCH autoencoder results.
 
 This script generates publication-quality plots comparing the trained
 autoencoder against baseline LMMSE performance. It produces three types
-of visualizations:
+of visualizations for each antenna configuration (16 and 32):
 
 1. **BLER Comparison**: Baseline (perfect/imperfect CSI) vs trained autoencoder
 2. **Training Loss Curve**: BCE loss evolution during training (iterations 500-5000)
@@ -13,10 +13,10 @@ Prerequisites
 -------------
 Before running this script, you must have generated:
 
-1. ``results/baseline_results.npz`` - from baseline.py
-2. ``results/inference_results_conventional.npz`` - from inference.py
-3. ``results/conventional_training_loss.npy`` - from training.py
-4. ``results/PUSCH_autoencoder_weights_conventional_training`` - from training.py
+1. ``results/baseline_results_ant{num_bs_ant}.npz`` - from baseline.py
+2. ``results/inference_results_ant{num_bs_ant}.npz`` - from inference.py
+3. ``results/training_loss_ant{num_bs_ant}.npy`` - from training.py
+4. ``results/PUSCH_autoencoder_weights_ant{num_bs_ant}`` - from training.py
 5. Checkpoint files at iterations 1000, 2000, 3000, 4000 (optional)
 
 Output
@@ -24,9 +24,9 @@ Output
 All plots are saved to ``results/`` directory:
 
 - ``bler_plot_bs{batch}_ue{ue}_ant{bs}x{ue}.png``: BLER comparison
-- ``training_loss.png``: Loss curve with best iteration marked
-- ``constellation_normalized.png``: Final trained vs standard 16-QAM
-- ``constellation_iter_{N}.png``: Intermediate constellation snapshots
+- ``training_loss_ant{num_bs_ant}.png``: Loss curve with best iteration marked
+- ``constellation_normalized_ant{num_bs_ant}.png``: Final trained vs standard 16-QAM
+- ``constellation_iter_{N}_ant{num_bs_ant}.png``: Intermediate constellation snapshots
 
 Usage
 -----
@@ -54,76 +54,6 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from demos.pusch_autoencoder.src.config import Config
-
-
-# =============================================================================
-# Configuration
-# =============================================================================
-# Load config for consistent naming in output files
-_cfg = Config()
-batch_size = _cfg.batch_size
-num_ue = _cfg.num_ue
-num_bs_ant = _cfg.num_bs_ant
-num_ue_ant = _cfg.num_ue_ant
-
-
-# =============================================================================
-# Load Results Data
-# =============================================================================
-# Baseline results (from baseline.py)
-results_path = os.path.join("results", "baseline_results.npz")
-if not os.path.exists(results_path):
-    raise FileNotFoundError(
-        f"{results_path} not found. "
-        "Run `python3 baseline.py` first to generate BER/BLER results."
-    )
-
-# Autoencoder inference results (from inference.py)
-conv_inf_results_path = os.path.join("results", "inference_results_conventional.npz")
-
-data = np.load(results_path)
-conv_inf_data = np.load(conv_inf_results_path)
-# two_phase_inf_data = np.load(two_phase_inf_results_path)  # Uncomment when available
-
-ebno_db = data["ebno_db"]
-bler = data["bler"]  # Shape: [2, num_snr_points] - [perfect_csi, imperfect_csi]
-conv_inf_bler = conv_inf_data["bler"]
-# two_phase_inf_bler = two_phase_inf_data["bler"]
-
-
-# =============================================================================
-# BLER Comparison Plot
-# =============================================================================
-# Compare baseline LMMSE (perfect/imperfect CSI) against trained autoencoder
-plt.figure()
-for idx, csi_label in enumerate(["(Perfect CSI)", "(Imperfect CSI)"]):
-    plt.semilogy(
-        ebno_db,
-        bler[idx],
-        marker="o",
-        linestyle="-",
-        label=f"LMMSE {csi_label}",
-    )
-plt.semilogy(
-    ebno_db,
-    conv_inf_bler,
-    marker="o",
-    linestyle="-",
-    label="Neural MIMO Detector (Imperfect CSI, SGD)",
-)
-plt.xlabel("Eb/N0 [dB]")
-plt.ylabel("BLER")
-plt.title("PUSCH - BLER vs Eb/N0")
-plt.grid(True, which="both")
-plt.legend()
-
-outfile = os.path.join(
-    "results",
-    f"bler_plot_bs{batch_size}_ue{num_ue}_ant{num_bs_ant}x{num_ue_ant}.png",
-)
-plt.savefig(outfile, dpi=300, bbox_inches="tight")
-plt.close()
-print(f"Saved BLER plot to {outfile}")
 
 
 # =============================================================================
@@ -187,153 +117,245 @@ init_const = standard_16qam()
 
 
 # =============================================================================
-# Training Loss Analysis
+# Parametrized BS Antenna Configurations
 # =============================================================================
-loss_path = os.path.join("results", "conventional_training_loss.npy")
-if os.path.exists(loss_path):
-    loss_values = np.load(loss_path)
+NUM_BS_ANT_VALUES = [16, 32]
 
-    # Find best (minimum) loss for reference line
-    best_loss = np.min(loss_values)
-    best_iteration = np.argmin(loss_values)
-    print(f"Best loss: {best_loss:.6f} at iteration {best_iteration}")
+for num_bs_ant in NUM_BS_ANT_VALUES:
+    print(f"\n{'='*60}")
+    print(f"Generating plots for num_bs_ant = {num_bs_ant}")
+    print(f"{'='*60}\n")
 
-    # Plot loss from iteration 500 onwards (skip initial transient)
-    # Early iterations have high variance and dominate the y-axis scale
-    start_iter = 500
-    end_iter = min(5000, len(loss_values))
-    iterations_range = np.arange(start_iter, end_iter)
-    loss_to_plot = loss_values[start_iter:end_iter]
+    # =========================================================================
+    # Configuration
+    # =========================================================================
+    _cfg = Config(num_bs_ant=num_bs_ant)
+    batch_size = _cfg.batch_size
+    num_ue = _cfg.num_ue
+    num_ue_ant = _cfg.num_ue_ant
 
-    plt.figure(figsize=(10, 5))
-    plt.plot(iterations_range, loss_to_plot, linewidth=0.8)
-    plt.xlabel("Iteration")
-    plt.ylabel("Loss")
-    plt.title("Training Loss (Iterations 500-5000)")
-    plt.grid(True, linestyle="--", alpha=0.7)
-    # Reference line at best loss helps identify convergence
-    plt.axhline(
-        best_loss,
-        color="r",
-        linestyle="--",
-        linewidth=0.8,
-        label=f"Best: {best_loss:.4f} @ iter {best_iteration}",
-    )
-    plt.legend()
+    ant_suffix = f"_ant{num_bs_ant}"
 
-    loss_outfile = os.path.join("results", "training_loss.png")
-    plt.savefig(loss_outfile, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"Saved loss plot to {loss_outfile}")
-else:
-    print(f"Warning: {loss_path} not found, skipping loss analysis.")
-
-
-# =============================================================================
-# Load Final Trained Weights
-# =============================================================================
-final_weights_path = os.path.join(
-    "results", "PUSCH_autoencoder_weights_conventional_training"
-)
-with open(final_weights_path, "rb") as f:
-    final_weights = pickle.load(f)
-
-
-# =============================================================================
-# Display Correction Scale Values
-# =============================================================================
-# These scales indicate how much the neural network deviates from classical LMMSE:
-# - Values near 0: Neural corrections have minimal effect (classical dominates)
-# - Large values: Neural network significantly modifies classical estimates
-if "rx_weights" in final_weights:
-    rx_weights = final_weights["rx_weights"]
-    # Weight ordering matches PUSCHNeuralDetector.trainable_variables:
-    # [h_correction_scale, err_var_correction_scale_raw, llr_correction_scale, ...nn_weights...]
-    h_correction_scale = float(rx_weights[0])
-    err_var_correction_scale_raw = float(rx_weights[1])
-    llr_correction_scale = float(rx_weights[2])
-
-    # Apply softplus to get actual scale: softplus(x) = log(1 + exp(x))
-    # This transformation ensures the error variance scale is always positive
-    err_var_correction_scale = np.log(1 + np.exp(err_var_correction_scale_raw))
-
-    print("Correction scales:")
-    print(f"  h_correction_scale: {h_correction_scale:.6f}")
-    print(f"  err_var_correction_scale (softplus): {err_var_correction_scale:.6f}")
-    print(f"  llr_correction_scale: {llr_correction_scale:.6f}")
-
-
-# =============================================================================
-# Final Constellation Plot
-# =============================================================================
-# Compare trained constellation against standard 16-QAM
-# tx_weights layout: [points_r, points_i] from PUSCHTrainableTransmitter
-final_const = normalize_constellation(
-    final_weights["tx_weights"][0], final_weights["tx_weights"][1]
-)
-
-fig, ax = plt.subplots(figsize=(5, 5))
-ax.scatter(init_const.real, init_const.imag, s=40, marker="o", label="Standard 16-QAM")
-ax.scatter(final_const.real, final_const.imag, s=40, marker="x", label="Trained")
-ax.axhline(0, color="gray", linewidth=0.5)
-ax.axvline(0, color="gray", linewidth=0.5)
-ax.set_aspect("equal", "box")
-ax.grid(True, linestyle="--", linewidth=0.5)
-ax.set_xlabel("In-phase")
-ax.set_ylabel("Quadrature")
-ax.set_title("Normalized Constellation: Standard vs Trained")
-ax.legend()
-
-const_outfile = os.path.join("results", "constellation_normalized.png")
-fig.savefig(const_outfile, dpi=150, bbox_inches="tight")
-plt.close(fig)
-print(f"Saved constellation plot to {const_outfile}")
-
-
-# =============================================================================
-# Constellation Evolution at Checkpoints
-# =============================================================================
-# Visualize how constellation geometry evolves during training
-# Useful for understanding optimization dynamics and detecting problems
-iterations = [1000, 2000, 3000, 4000]
-
-for iteration in iterations:
-    weights_path = os.path.join(
-        "results", f"PUSCH_autoencoder_weights_conventional_iter_{iteration}"
-    )
-
-    if not os.path.exists(weights_path):
-        print(f"Warning: {weights_path} not found, skipping.")
+    # =========================================================================
+    # Load Results Data
+    # =========================================================================
+    # Baseline results (from baseline.py)
+    baseline_path = os.path.join("results", f"baseline_results{ant_suffix}.npz")
+    if not os.path.exists(baseline_path):
+        print(
+            f"Warning: {baseline_path} not found. "
+            f"Run `python3 baseline.py` first. Skipping {num_bs_ant} antenna plots."
+        )
         continue
 
-    with open(weights_path, "rb") as f:
-        weights = pickle.load(f)
+    # Autoencoder inference results (from inference.py)
+    inference_path = os.path.join("results", f"inference_results{ant_suffix}.npz")
+    if not os.path.exists(inference_path):
+        print(
+            f"Warning: {inference_path} not found. "
+            f"Run `python3 inference.py` first. Skipping {num_bs_ant} antenna plots."
+        )
+        continue
 
-    trained_const = normalize_constellation(
-        weights["tx_weights"][0], weights["tx_weights"][1]
+    baseline_data = np.load(baseline_path)
+    inference_data = np.load(inference_path)
+
+    ebno_db = baseline_data["ebno_db"]
+    bler = baseline_data[
+        "bler"
+    ]  # Shape: [2, num_snr_points] - [perfect_csi, imperfect_csi]
+    inference_bler = inference_data["bler"]
+
+    # =========================================================================
+    # BLER Comparison Plot
+    # =========================================================================
+    # Compare baseline LMMSE (perfect/imperfect CSI) against trained autoencoder
+    plt.figure()
+    for idx, csi_label in enumerate(["(Perfect CSI)", "(Imperfect CSI)"]):
+        plt.semilogy(
+            ebno_db,
+            bler[idx],
+            marker="o",
+            linestyle="-",
+            label=f"LMMSE {csi_label}",
+        )
+    plt.semilogy(
+        ebno_db,
+        inference_bler,
+        marker="o",
+        linestyle="-",
+        label="Neural MIMO Detector (Imperfect CSI)",
+    )
+    plt.xlabel("Eb/N0 [dB]")
+    plt.ylabel("BLER")
+    plt.title(f"PUSCH - BLER vs Eb/N0 ({num_bs_ant} BS Antennas)")
+    plt.grid(True, which="both")
+    plt.legend()
+
+    outfile = os.path.join(
+        "results",
+        f"bler_plot_bs{batch_size}_ue{num_ue}_ant{num_bs_ant}x{num_ue_ant}.png",
+    )
+    plt.savefig(outfile, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved BLER plot to {outfile}")
+
+    # =========================================================================
+    # Training Loss Analysis
+    # =========================================================================
+    loss_path = os.path.join("results", f"training_loss{ant_suffix}.npy")
+    if os.path.exists(loss_path):
+        loss_values = np.load(loss_path)
+
+        # Find best (minimum) loss for reference line
+        best_loss = np.min(loss_values)
+        best_iteration = np.argmin(loss_values)
+        print(f"Best loss: {best_loss:.6f} at iteration {best_iteration}")
+
+        # Plot loss from iteration 500 onwards (skip initial transient)
+        # Early iterations have high variance and dominate the y-axis scale
+        start_iter = 500
+        end_iter = min(5000, len(loss_values))
+        iterations_range = np.arange(start_iter, end_iter)
+        loss_to_plot = loss_values[start_iter:end_iter]
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(iterations_range, loss_to_plot, linewidth=0.8)
+        plt.xlabel("Iteration")
+        plt.ylabel("Loss")
+        plt.title(f"Training Loss - Iterations 500-5000 ({num_bs_ant} BS Antennas)")
+        plt.grid(True, linestyle="--", alpha=0.7)
+        # Reference line at best loss helps identify convergence
+        plt.axhline(
+            best_loss,
+            color="r",
+            linestyle="--",
+            linewidth=0.8,
+            label=f"Best: {best_loss:.4f} @ iter {best_iteration}",
+        )
+        plt.legend()
+
+        loss_outfile = os.path.join("results", f"training_loss{ant_suffix}.png")
+        plt.savefig(loss_outfile, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved loss plot to {loss_outfile}")
+    else:
+        print(f"Warning: {loss_path} not found, skipping loss analysis.")
+
+    # =========================================================================
+    # Load Final Trained Weights
+    # =========================================================================
+    final_weights_path = os.path.join(
+        "results", f"PUSCH_autoencoder_weights{ant_suffix}"
+    )
+    if not os.path.exists(final_weights_path):
+        print(f"Warning: {final_weights_path} not found, skipping constellation plots.")
+        continue
+
+    with open(final_weights_path, "rb") as f:
+        final_weights = pickle.load(f)
+
+    # =========================================================================
+    # Display Correction Scale Values
+    # =========================================================================
+    # These scales indicate how much the neural network deviates from classical LMMSE:
+    # - Values near 0: Neural corrections have minimal effect (classical dominates)
+    # - Large values: Neural network significantly modifies classical estimates
+    if "rx_weights" in final_weights:
+        rx_weights = final_weights["rx_weights"]
+        # Weight ordering matches PUSCHNeuralDetector.trainable_variables:
+        # [h_correction_scale, err_var_correction_scale_raw, llr_correction_scale, ...nn_weights...]
+        h_correction_scale = float(rx_weights[0])
+        err_var_correction_scale_raw = float(rx_weights[1])
+        llr_correction_scale = float(rx_weights[2])
+
+        # Apply softplus to get actual scale: softplus(x) = log(1 + exp(x))
+        # This transformation ensures the error variance scale is always positive
+        err_var_correction_scale = np.log(1 + np.exp(err_var_correction_scale_raw))
+
+        print("Correction scales:")
+        print(f"  h_correction_scale: {h_correction_scale:.6f}")
+        print(f"  err_var_correction_scale (softplus): {err_var_correction_scale:.6f}")
+        print(f"  llr_correction_scale: {llr_correction_scale:.6f}")
+
+    # =========================================================================
+    # Final Constellation Plot
+    # =========================================================================
+    # Compare trained constellation against standard 16-QAM
+    # tx_weights layout: [points_r, points_i] from PUSCHTrainableTransmitter
+    final_const = normalize_constellation(
+        final_weights["tx_weights"][0], final_weights["tx_weights"][1]
     )
 
     fig, ax = plt.subplots(figsize=(5, 5))
     ax.scatter(
         init_const.real, init_const.imag, s=40, marker="o", label="Standard 16-QAM"
     )
-    ax.scatter(
-        trained_const.real,
-        trained_const.imag,
-        s=40,
-        marker="x",
-        label=f"Iter {iteration}",
-    )
+    ax.scatter(final_const.real, final_const.imag, s=40, marker="x", label="Trained")
     ax.axhline(0, color="gray", linewidth=0.5)
     ax.axvline(0, color="gray", linewidth=0.5)
     ax.set_aspect("equal", "box")
     ax.grid(True, linestyle="--", linewidth=0.5)
     ax.set_xlabel("In-phase")
     ax.set_ylabel("Quadrature")
-    ax.set_title(f"Constellation at Iteration {iteration}")
+    ax.set_title(f"Normalized Constellation: Standard vs Trained ({num_bs_ant} BS Ant)")
     ax.legend()
 
-    iter_outfile = os.path.join("results", f"constellation_iter_{iteration}.png")
-    fig.savefig(iter_outfile, dpi=150, bbox_inches="tight")
+    const_outfile = os.path.join("results", f"constellation_normalized{ant_suffix}.png")
+    fig.savefig(const_outfile, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved constellation plot to {iter_outfile}")
+    print(f"Saved constellation plot to {const_outfile}")
+
+    # =========================================================================
+    # Constellation Evolution at Checkpoints
+    # =========================================================================
+    # Visualize how constellation geometry evolves during training
+    # Useful for understanding optimization dynamics and detecting problems
+    iterations = [1000, 2000, 3000, 4000]
+
+    for iteration in iterations:
+        weights_path = os.path.join(
+            "results", f"PUSCH_autoencoder_weights_iter_{iteration}{ant_suffix}"
+        )
+
+        if not os.path.exists(weights_path):
+            print(f"Warning: {weights_path} not found, skipping.")
+            continue
+
+        with open(weights_path, "rb") as f:
+            weights = pickle.load(f)
+
+        trained_const = normalize_constellation(
+            weights["tx_weights"][0], weights["tx_weights"][1]
+        )
+
+        fig, ax = plt.subplots(figsize=(5, 5))
+        ax.scatter(
+            init_const.real, init_const.imag, s=40, marker="o", label="Standard 16-QAM"
+        )
+        ax.scatter(
+            trained_const.real,
+            trained_const.imag,
+            s=40,
+            marker="x",
+            label=f"Iter {iteration}",
+        )
+        ax.axhline(0, color="gray", linewidth=0.5)
+        ax.axvline(0, color="gray", linewidth=0.5)
+        ax.set_aspect("equal", "box")
+        ax.grid(True, linestyle="--", linewidth=0.5)
+        ax.set_xlabel("In-phase")
+        ax.set_ylabel("Quadrature")
+        ax.set_title(f"Constellation at Iteration {iteration} ({num_bs_ant} BS Ant)")
+        ax.legend()
+
+        iter_outfile = os.path.join(
+            "results", f"constellation_iter_{iteration}{ant_suffix}.png"
+        )
+        fig.savefig(iter_outfile, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"Saved constellation plot to {iter_outfile}")
+
+print("\n" + "=" * 60)
+print("Plot generation complete for all antenna configurations.")
+print("=" * 60)
