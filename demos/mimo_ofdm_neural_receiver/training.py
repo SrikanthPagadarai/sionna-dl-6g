@@ -104,13 +104,13 @@ os.makedirs(ckpt_dir, exist_ok=True)
 
 # =============================================================================
 # Model Instantiation
-# Architecture: 512 filters x 12 residual blocks (larger than default)
+# Architecture: 256 filters x 4 residual blocks
 # =============================================================================
 system = System(
     training=True,
     use_neural_rx=True,
-    num_conv2d_filters=512,
-    num_res_blocks=12,
+    num_conv2d_filters=256,
+    num_res_blocks=4,
 )
 
 # Warm-up call to trigger variable creation before checkpoint restore

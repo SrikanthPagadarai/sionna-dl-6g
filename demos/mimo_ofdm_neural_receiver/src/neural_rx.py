@@ -214,7 +214,7 @@ class NeuralRx(Layer):
         self,
         cfg: Config,
         channel_coding_off: bool = False,
-        num_conv2d_filters: int = 128,
+        num_conv2d_filters: int = 256,
         num_resnet_layers: int = 2,
         num_res_blocks: int = 4,
     ):
@@ -229,7 +229,7 @@ class NeuralRx(Layer):
         channel_coding_off : bool, (default False)
             Skip LDPC decoding if True (training mode).
 
-        num_conv2d_filters : int, (default 128)
+        num_conv2d_filters : int, (default 256)
             Width of the residual network.
 
         num_resnet_layers : int, (default 2)

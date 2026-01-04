@@ -133,7 +133,7 @@ class System(Model):
         speed: float = 0.0,
         num_bits_per_symbol: BitsPerSym = BitsPerSym.QPSK,
         use_neural_rx: bool = False,
-        num_conv2d_filters: int = 128,
+        num_conv2d_filters: int = 256,
         num_resnet_layers: int = 2,
         num_res_blocks: int = 4,
         name: str = "system",
