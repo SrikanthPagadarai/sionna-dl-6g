@@ -32,7 +32,7 @@ html_title = "Sionna DL 6G Demos"
 
 # Furo theme options
 html_theme_options = {
-    "source_repository": "https://github.com/YOUR_USERNAME/sionna-dl-6g-demos",
+    "source_repository": "https://github.com/SrikanthPagadarai/sionna-dl-6g",
     "source_branch": "main",
     "source_directory": "docs/",
 }

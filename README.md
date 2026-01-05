@@ -109,7 +109,7 @@ sionna-dl-6g/
 Requires Python 3.10–3.12.
 
 ```bash
-pip install sionna-dl-6g
+pip install sionna-dl-6g-demos
 ```
 
 Or install from source:
