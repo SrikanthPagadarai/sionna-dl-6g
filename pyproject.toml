@@ -1,21 +1,49 @@
 [tool.poetry]
-name = "sionna-dl-6g"
+name = "sionna-dl-6g-demos"
 version = "0.1.0"
-package-mode = false
-description = "DL for 6G Using TensorFlow and Sionna"
+description = "Deep Learning Demos for B5G/6G Using TensorFlow and Sionna"
 authors = ["Srikanth Pagadarai <srikanth.pagadarai@gmail.com>"]
+readme = "README.md"
+license = "MIT"
+packages = [
+    { include = "demos" },
+]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
-sionna = ">=0.15.0"
+sionna = ">=0.19.0"
 matplotlib = "^3.9"
-
-[tool.poetry.group.cpu.dependencies]
-tensorflow = ">=2.15"
-
-[tool.poetry.group.gpu.dependencies]
-tensorflow = { version = ">=2.15", extras = ["and-cuda"] }
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+black = "^24.0"
+pre-commit = "^4.5.0"
+flake8 = "^7.3.0"
+autoflake = "^2.3.1"
+
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+sphinx = "^7.0"
+furo = "^2024.0"
+sphinx-copybutton = "^0.5"
+sphinx-autobuild = "^2024.0"
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | __pycache__
+  | demos/.*/(checkpoints|results)
+  | docs\/_build
+)/
+'''

@@ -1,0 +1,3 @@
+[submodule "gcp-management"]
+	path = gcp-management
+	url = https://github.com/SrikanthPagadarai/gcp-management.git
