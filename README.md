@@ -70,7 +70,7 @@ sionna-dl-6g/
 │   │   └── plots.py                      # BER/BLER visualization
 │   │
 │   └── pusch_autoencoder/                # PUSCH autoencoder demo
-│   │   ├── results/                      # Performance results
+│       ├── results/                      # Performance results
 │       ├── src/
 │       │   ├── config.py                 # System configuration
 │       │   ├── pusch_trainable_transmitter.py  # Trainable constellation TX
@@ -151,11 +151,14 @@ python demos/mimo_ofdm_neural_receiver/plots.py
 ### PUSCH Autoencoder Demo
 
 ```bash
-# Train autoencoder (conventional mode)
-python demos/pusch_autoencoder/training.py conventional
+# Train autoencoder (16 BS antennas, default)
+python demos/pusch_autoencoder/training.py
+
+# Train autoencoder (32 BS antennas)
+python demos/pusch_autoencoder/training.py --num_bs_ant 32
 
 # Run inference
-python demos/pusch_autoencoder/inference.py conventional
+python demos/pusch_autoencoder/inference.py
 
 # Generate plots
 python demos/pusch_autoencoder/plots.py
