@@ -12,7 +12,6 @@ This project summarizes some exploratory demos of deep learning techniques appli
    :caption: Getting Started
 
    installation
-   quickstart
 
 .. toctree::
    :maxdepth: 2

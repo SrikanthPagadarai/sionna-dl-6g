@@ -15,8 +15,8 @@ Clone the repository and install dependencies using Poetry:
 
 .. code-block:: bash
 
-   git clone https://github.com/YOUR_USERNAME/sionna-dl-6g-demos.git
-   cd sionna-dl-6g-demos
+   git clone https://github.com/SrikanthPagadarai/sionna-dl-6g.git
+   cd sionna-dl-6g
    poetry install
 
 Install via pip
@@ -26,14 +26,14 @@ Alternatively, install directly from the repository:
 
 .. code-block:: bash
 
-   pip install git+https://github.com/YOUR_USERNAME/sionna-dl-6g-demos.git
+   pip install git+https://github.com/SrikanthPagadarai/sionna-dl-6g.git
 
 Dependencies
 ------------
 
 The project depends on:
 
-- `Sionna <https://nvlabs.github.io/sionna/>`_ (≥0.15.0) - NVIDIA's library for link-level simulations
+- `Sionna <https://nvlabs.github.io/sionna/>`_ (≥0.19.0) - NVIDIA's library for link-level simulations
 - TensorFlow 2.x - Deep learning framework
 - Matplotlib - Visualization
 
