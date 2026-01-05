@@ -61,7 +61,7 @@ from .config import Config
 from .cir_generator import CIRGenerator
 
 # get directory name of file
-DEMO_DIR = os.path.dirname(os.path.abspath(__file__))
+DEMO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # =============================================================================
