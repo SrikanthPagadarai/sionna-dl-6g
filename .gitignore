@@ -9,3 +9,15 @@ docs/_build/
 !demos/mimo_ofdm_neural_receiver/results/ber_cdlC.png
 !demos/mimo_ofdm_neural_receiver/results/bler_cdlC.png
 !demos/mimo_ofdm_neural_receiver/results/training_loss.png
+!demos/dpd/results/constellation_comparison_ls.png
+!demos/dpd/results/constellation_comparison_nn.png
+!demos/dpd/results/ls_dpd_convergence.png
+!demos/dpd/results/psd_comparison_ls.png
+!demos/dpd/results/psd_comparison_nn.png
+!demos/dpd/results/training_loss.png
+!demos/pusch_autoencoder/results/ber_plot_1bs_16bs_ant_x_4ue_4ue_ant.png
+!demos/pusch_autoencoder/results/ber_plot_1bs_32bs_ant_x_4ue_4ue_ant.png
+!demos/pusch_autoencoder/results/bler_plot_1bs_16bs_ant_x_4ue_4ue_ant.png
+!demos/pusch_autoencoder/results/bler_plot_1bs_32bs_ant_x_4ue_4ue_ant.png
+!demos/pusch_autoencoder/results/constellation_normalized_ant16.png
+!demos/pusch_autoencoder/results/constellation_normalized_ant32.png
