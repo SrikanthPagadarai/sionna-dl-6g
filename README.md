@@ -1,8 +1,10 @@
-# [Work-In-Progress] sionna-dl-6g
+# [Work-In-Progress] nextgen-wireless-dl-demos
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Deep learning demos for 5G/6G wireless systems using TensorFlow and [Sionna](https://nvlabs.github.io/sionna/).
+
+> **Disclaimer:** This is an independent project and is not affiliated with, endorsed by, or sponsored by NVIDIA Corporation. [Sionna](https://nvlabs.github.io/sionna/) is an open-source library developed by NVIDIA.
 
 ⚠️ **Note:** This project is under active development and not accepting external contributions at this time.
 
@@ -19,7 +21,7 @@ This repository contains neural network-based demos for 5G/6G communication syst
 ## Project Structure
 
 ```
-sionna-dl-6g/
+nextgen-wireless-dl-demos/
 ├── .github/
 │   └── workflows/
 │       ├── docs.yml                      # Documentation build workflow
@@ -109,14 +111,14 @@ sionna-dl-6g/
 Requires Python 3.10–3.12.
 
 ```bash
-pip install sionna-dl-6g-demos
+pip install nextgen-wireless-dl-demos
 ```
 
 Or install from source:
 
 ```bash
-git clone https://github.com/SrikanthPagadarai/sionna-dl-6g.git
-cd sionna-dl-6g
+git clone https://github.com/SrikanthPagadarai/nextgen-wireless-dl-demos.git
+cd nextgen-wireless-dl-demos
 pip install .
 ```
 
@@ -169,8 +171,8 @@ python demos/pusch_autoencoder/plots.py
 ### Setup
 
 ```bash
-git clone https://github.com/SrikanthPagadarai/sionna-dl-6g.git
-cd sionna-dl-6g
+git clone https://github.com/SrikanthPagadarai/nextgen-wireless-dl-demos.git
+cd nextgen-wireless-dl-demos
 poetry install
 poetry run pre-commit install
 ```
@@ -198,10 +200,10 @@ poetry run flake8 .
 
 ```bash
 # Build image
-docker build -t sionna-dl-6g .
+docker build -t nextgen-wireless-dl-demos .
 
 # Run container with GPU support
-docker run --gpus all -it sionna-dl-6g
+docker run --gpus all -it nextgen-wireless-dl-demos
 ```
 
 ## Requirements

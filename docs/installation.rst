@@ -15,8 +15,8 @@ Clone the repository and install dependencies using Poetry:
 
 .. code-block:: bash
 
-   git clone https://github.com/SrikanthPagadarai/sionna-dl-6g.git
-   cd sionna-dl-6g
+   git clone https://github.com/SrikanthPagadarai/nextgen-wireless-dl-demos.git
+   cd nextgen-wireless-dl-demos
    poetry install
 
 Install via pip
@@ -26,7 +26,7 @@ Alternatively, install directly from the repository:
 
 .. code-block:: bash
 
-   pip install git+https://github.com/SrikanthPagadarai/sionna-dl-6g.git
+   pip install git+https://github.com/SrikanthPagadarai/nextgen-wireless-dl-demos.git
 
 Dependencies
 ------------

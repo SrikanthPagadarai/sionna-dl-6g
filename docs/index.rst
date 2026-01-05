@@ -1,11 +1,16 @@
-Sionna DL 5G/6G Demos
-==================
+Next-Gen Wireless DL Demos
+==========================
 
 Deep Learning Demos for 5G/6G Using TensorFlow and Sionna.
 
 This project summarizes some exploratory demos of deep learning techniques applied to
 5G and 6G wireless communication systems, developed using NVIDIA's
 `Sionna <https://nvlabs.github.io/sionna/>`_ library.
+
+.. note::
+
+   This is an independent project and is not affiliated with, endorsed by, or
+   sponsored by NVIDIA Corporation.
 
 .. toctree::
    :maxdepth: 2

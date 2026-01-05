@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.abspath(".."))
 
 # -- Project information -----------------------------------------------------
-project = "Sionna DL 6G Demos"
+project = "Next-Gen Wireless DL Demos"
 copyright = "2025, Srikanth Pagadarai"
 author = "Srikanth Pagadarai"
 release = "0.1.0"
@@ -28,11 +28,11 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # -- Options for HTML output -------------------------------------------------
 html_theme = "furo"
 html_static_path = ["_static"]
-html_title = "Sionna DL 6G Demos"
+html_title = "Next-Gen Wireless DL Demos"
 
 # Furo theme options
 html_theme_options = {
-    "source_repository": "https://github.com/SrikanthPagadarai/sionna-dl-6g",
+    "source_repository": "https://github.com/SrikanthPagadarai/nextgen-wireless-dl-demos",
     "source_branch": "main",
     "source_directory": "docs/",
 }

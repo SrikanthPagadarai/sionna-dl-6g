@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "sionna-dl-6g-demos"
+name = "nextgen-wireless-dl-demos"
 version = "0.1.0"
-description = "Deep Learning Demos for B5G/6G Using TensorFlow and Sionna"
+description = "Deep Learning Demos for 5G/6G Using TensorFlow and Sionna"
 authors = ["Srikanth Pagadarai <srikanth.pagadarai@gmail.com>"]
 readme = "README.md"
 license = "MIT"
