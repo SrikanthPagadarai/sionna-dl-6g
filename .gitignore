@@ -21,3 +21,4 @@ docs/_build/
 !demos/pusch_autoencoder/results/bler_plot_1bs_32bs_ant_x_4ue_4ue_ant.png
 !demos/pusch_autoencoder/results/constellation_normalized_ant16.png
 !demos/pusch_autoencoder/results/constellation_normalized_ant32.png
+!demos/pusch_autoencoder/results/munich_ue_positions.png
