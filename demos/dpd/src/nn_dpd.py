@@ -9,6 +9,7 @@ capturing PA behaviors that don't fit within the memory polynomial model.
 The architecture uses:
 
 - **Sliding window** input to capture memory effects (similar concept to MP)
+- **Amplitude features** (|x|^2, |x|^4, |x|^6) matching memory polynomial basis functions
 - **Residual blocks** for stable deep network training
 - **Skip connection** to ensure identity initialization
 - **Real-valued processing** of complex signals (split into I/Q)
@@ -146,6 +147,12 @@ class NeuralNetworkDPD(Layer):
     a sliding window over input samples, similar in concept to the
     memory polynomial approach.
 
+    The network receives explicit amplitude features (|x|^2, |x|^4, |x|^6) in
+    addition to I/Q components. This is critical because PA distortion is
+    fundamentally amplitude-driven (AM-AM and AM-PM conversion). Without
+    these features, the network must learn from scratch that amplitude
+    matters, which is inefficient and leads to suboptimal spectral behavior.
+
     Parameters
     ----------
     memory_depth : int, optional
@@ -173,6 +180,18 @@ class NeuralNetworkDPD(Layer):
 
     Notes
     -----
+    **Amplitude Features:**
+
+    PA nonlinearity is driven by instantaneous signal amplitude. The memory
+    polynomial explicitly models terms like ``|x[n-m]|^p · x[n-m]`` where p
+    is even (0, 2, 4, 6...) corresponding to odd-order nonlinearities. By
+    providing |x|^2, |x|^4, |x|^6 as explicit input features, we give the
+    network direct access to the same basis functions that make memory
+    polynomials effective for PA linearization.
+
+    Feature layout per sample (5 * memory_depth total features):
+    ``[real[n-M+1:n], imag[n-M+1:n], |x|^2[n-M+1:n], |x|^4[n-M+1:n], |x|^6[n-M+1:n]]``
+
     **Identity Initialization:**
 
     The output layer is initialized to zeros, so the initial network output
@@ -231,8 +250,10 @@ class NeuralNetworkDPD(Layer):
         self._num_layers_per_block = int(num_layers_per_block)
         self._num_res_blocks = int(num_res_blocks)
 
-        # Input feature size: memory_depth samples × 2 (real + imaginary).
-        self._input_size = 2 * self._memory_depth
+        # Input feature size: memory_depth samples × 5 features each.
+        # Features per sample: real, imag, |x|^2, |x|^4, |x|^6
+        self._num_features_per_sample = 5
+        self._input_size = self._num_features_per_sample * self._memory_depth
 
         # Project input features to hidden dimension.
         self._input_dense = Dense(
@@ -266,7 +287,8 @@ class NeuralNetworkDPD(Layer):
         Extract sliding window features from batched complex signal.
 
         Creates a causal sliding window where each output position sees
-        the current sample and (memory_depth - 1) past samples.
+        the current sample and (memory_depth - 1) past samples. Includes
+        amplitude features (|x|^2, |x|^4, |x|^6) to capture PA nonlinearity.
 
         Parameters
         ----------
@@ -276,12 +298,22 @@ class NeuralNetworkDPD(Layer):
         Returns
         -------
         tf.Tensor
-            Feature tensor, shape ``[batch, num_samples, 2 * memory_depth]``.
-            Layout per sample: ``[real[n-M+1], ..., real[n], imag[n-M+1], ..., imag[n]]``
+            Feature tensor, shape ``[batch, num_samples, 5 * memory_depth]``.
+            Layout per sample:
+            ``[real[n-M+1:n], imag[n-M+1:n], |x|^2[n-M+1:n], |x|^4[n-M+1:n], |x|^6[n-M+1:n]]``
 
         Notes
         -----
         Zero-padding at the start ensures output length equals input length.
+
+        The amplitude features align with memory polynomial basis functions:
+
+        - |x|^2 corresponds to 3rd-order nonlinearity (|x|^2 · x)
+        - |x|^4 corresponds to 5th-order nonlinearity (|x|^4 · x)
+        - |x|^6 corresponds to 7th-order nonlinearity (|x|^6 · x)
+
+        This mirrors the structure of memory polynomial models where terms
+        like ``|x[n-m]|^p · x[n-m]`` explicitly encode amplitude dependence.
         """
         batch_size = tf.shape(signal)[0]
 
@@ -299,8 +331,29 @@ class NeuralNetworkDPD(Layer):
         real_part = tf.cast(tf.math.real(windows), tf.float32)
         imag_part = tf.cast(tf.math.imag(windows), tf.float32)
 
-        # Concatenate: [B, num_samples, 2 * memory_depth]
-        features = tf.concat([real_part, imag_part], axis=-1)
+        # Compute amplitude features for AM-AM/AM-PM modeling.
+        # These align with memory polynomial basis functions where |x|^p · x
+        # represents (p+1)-order nonlinearity:
+        #   |x|² · x = 3rd order intermodulation
+        #   |x|⁴ · x = 5th order intermodulation
+        #   |x|⁶ · x = 7th order intermodulation
+        amplitude = tf.abs(windows)
+        amplitude = tf.cast(amplitude, tf.float32)
+        amp_squared = amplitude**2  # |x|^2 (3rd order basis)
+        amp_power4 = amplitude**4  # |x|^4 (5th order basis)
+        amp_power6 = amplitude**6  # |x|^6 (7th order basis)
+
+        # Normalize amplitude features to prevent gradient explosion.
+        # Due to high PAPR of OFDM, we scale by the theoretical
+        # expected values.
+        amp_power4 = amp_power4 / 2.0
+        amp_power6 = amp_power6 / 6.0
+
+        # Concatenate all features: [B, num_samples, 5 * memory_depth]
+        # Layout: [real, imag, |x|^2, |x|^4, |x|^6] for each time tap
+        features = tf.concat(
+            [real_part, imag_part, amp_squared, amp_power4, amp_power6], axis=-1
+        )
 
         return features
 
@@ -350,14 +403,18 @@ class NeuralNetworkDPD(Layer):
 
         x = tf.cast(x, tf.complex64)
 
-        # Extract sliding window features: [B, N, 2M]
+        # Extract sliding window features: [B, N, 5*M]
+        # Includes real, imag, |x|^2, |x|^4, |x|^6 for each memory tap
         features = self._create_sliding_windows_batched(x)
 
         # Extract current sample for skip connection.
-        # In the feature layout, current real is at index (M-1),
-        # current imag is at index (2M-1).
-        skip_real = features[..., self._memory_depth - 1]
-        skip_imag = features[..., 2 * self._memory_depth - 1]
+        # In the feature layout:
+        #   real[n-M+1:n] at indices [0, M-1]
+        #   imag[n-M+1:n] at indices [M, 2M-1]
+        # Current sample: real at index (M-1), imag at index (2M-1)
+        M = self._memory_depth
+        skip_real = features[..., M - 1]
+        skip_imag = features[..., 2 * M - 1]
         skip = tf.stack([skip_real, skip_imag], axis=-1)  # [B, N, 2]
 
         # Forward through network.

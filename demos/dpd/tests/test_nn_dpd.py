@@ -76,7 +76,7 @@ def test_nn_dpd_initialization():
     assert dpd._num_filters == 64
     assert dpd._num_layers_per_block == 2
     assert dpd._num_res_blocks == 3
-    assert dpd._input_size == 8  # 2 * memory_depth
+    assert dpd._input_size == 20  # 5 * memory_depth (real, imag, |x|^2, |x|^4, |x|^6)
 
     print("\n[NN-DPD Initialization]:")
     print(f"  memory_depth: {dpd._memory_depth}")
@@ -118,8 +118,9 @@ def test_nn_dpd_sliding_windows():
 
     features = dpd._create_sliding_windows_batched(x)
 
-    # Output shape: [batch, num_samples, 2 * memory_depth]
-    assert features.shape == (batch_size, num_samples, 8)
+    # Output shape: [batch, num_samples, 5 * memory_depth]
+    # Features: real, imag, |x|^2, |x|^4, |x|^6 for each memory tap
+    assert features.shape == (batch_size, num_samples, 20)
     assert features.dtype == tf.float32
 
     print("\n[NN-DPD Sliding Windows]:")
