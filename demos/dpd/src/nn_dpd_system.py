@@ -225,7 +225,7 @@ class NN_DPDSystem(DPDSystem):
         y_comp = signals["y_comp"]
 
         # Target is predistorter output (gradient stopped).
-        # We want postdistorter to match what predistorter produced.
+        # The goal is to match postdistorter and predistorter outputs.
         u_target = tf.stop_gradient(u_norm)
 
         # Normalize PA output for postdistorter input.

@@ -185,8 +185,8 @@ class NeuralNetworkDPD(Layer):
     PA nonlinearity is driven by instantaneous signal amplitude. The memory
     polynomial explicitly models terms like ``|x[n-m]|^p · x[n-m]`` where p
     is even (0, 2, 4, 6...) corresponding to odd-order nonlinearities. By
-    providing |x|^2, |x|^4, |x|^6 as explicit input features, we give the
-    network direct access to the same basis functions that make memory
+    providing |x|^2, |x|^4, |x|^6 as explicit input features, the network is
+    given direct access to the same basis functions that make memory
     polynomials effective for PA linearization.
 
     Feature layout per sample (5 * memory_depth total features):
@@ -334,9 +334,9 @@ class NeuralNetworkDPD(Layer):
         # Compute amplitude features for AM-AM/AM-PM modeling.
         # These align with memory polynomial basis functions where |x|^p · x
         # represents (p+1)-order nonlinearity:
-        #   |x|² · x = 3rd order intermodulation
-        #   |x|⁴ · x = 5th order intermodulation
-        #   |x|⁶ · x = 7th order intermodulation
+        #   |x|^2 · x = 3rd order intermodulation
+        #   |x|^4 · x = 5th order intermodulation
+        #   |x|^6 · x = 7th order intermodulation
         amplitude = tf.abs(windows)
         amplitude = tf.cast(amplitude, tf.float32)
         amp_squared = amplitude**2  # |x|^2 (3rd order basis)
@@ -344,7 +344,7 @@ class NeuralNetworkDPD(Layer):
         amp_power6 = amplitude**6  # |x|^6 (7th order basis)
 
         # Normalize amplitude features to prevent gradient explosion.
-        # Due to high PAPR of OFDM, we scale by the theoretical
+        # Due to high PAPR of OFDM, scale by the theoretical
         # expected values.
         amp_power4 = amp_power4 / 2.0
         amp_power6 = amp_power6 / 6.0

@@ -144,7 +144,7 @@ BATCH_SIZE = args.batch_size
 # Gradient accumulation: apply optimizer every N steps.
 # Effective batch size = BATCH_SIZE * ACCUMULATION_STEPS.
 ACCUMULATION_STEPS = 4
-LEARNING_RATE = 1e-3  # Adam default works well for most cases.
+LEARNING_RATE = 5e-4  # Adam default works well for most cases.
 
 # =============================================================================
 # Setup directories

@@ -78,7 +78,7 @@ class DPDSystem(Layer):
 
     The key insight is that at convergence, the predistorter output ``u``
     equals the ideal PA input that would produce linear output. By training
-    a postdistorter on the PA output to reproduce ``u``, we learn the PA
+    a postdistorter on the PA output to reproduce ``u``, it learns the PA
     inverse. The trained postdistorter weights are then copied to the
     predistorter.
 
@@ -95,8 +95,8 @@ class DPDSystem(Layer):
 
     The PA has linear gain G in addition to nonlinear distortion. Without
     normalization, the postdistorter would learn to invert both the gain
-    and nonlinearity. By dividing by G, we isolate just the nonlinear
-    component for the postdistorter to learn.
+    and nonlinearity. By dividing by G, the nonlinear component is
+    isolated for the postdistorter to learn.
 
     - ``estimate_pa_gain()`` should be called before training
     - PA gain is estimated once and remains fixed during training
