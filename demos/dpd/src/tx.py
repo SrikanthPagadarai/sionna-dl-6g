@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 """
 OFDM transmitter for DPD system evaluation.
 

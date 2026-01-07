@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 import tensorflow as tf
 import pytest
 from sionna.phy.utils import ebnodb2no

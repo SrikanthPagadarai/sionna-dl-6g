@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 """
 Trainable PUSCH receiver with neural detection and training mode support.
 

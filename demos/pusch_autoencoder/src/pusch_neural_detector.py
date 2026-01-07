@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 """
 Neural MIMO detector for PUSCH with learned channel estimation refinement.
 

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 """Tests for NN_DPDSystem using Neural Network Indirect Learning Architecture."""
 
 import pytest

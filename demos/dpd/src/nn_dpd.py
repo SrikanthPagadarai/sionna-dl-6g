@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 """
 Neural network digital predistortion using fully-connected feedforward architecture.
 

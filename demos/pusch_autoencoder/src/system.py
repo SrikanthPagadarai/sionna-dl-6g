@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 """
 End-to-end PUSCH link simulation for autoencoder training and evaluation.
 

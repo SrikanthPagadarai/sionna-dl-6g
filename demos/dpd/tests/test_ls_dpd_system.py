@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 """Tests for LS_DPDSystem using Least-Squares Indirect Learning Architecture."""
 
 import pytest
