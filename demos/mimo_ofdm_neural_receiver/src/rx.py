@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 """
 Baseline receiver for MIMO-OFDM neural receiver demo.
 
@@ -189,7 +192,7 @@ class Rx:
         # =====================================================================
         if self._cfg.perfect_csi:
             # Extract channel on active subcarriers (remove guards and DC null)
-            # Error variance is zero since we have perfect knowledge
+            # Error variance is zero when CSI is perfect
             h_hat = self._csi.remove_nulled_scs(h_freq)
             err_var = tf.cast(0.0, tf.float32)
         else:

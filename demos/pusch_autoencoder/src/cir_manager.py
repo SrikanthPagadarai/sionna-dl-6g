@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 """
 Channel Impulse Response (CIR) management for ray-traced PUSCH channels.
 

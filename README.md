@@ -8,6 +8,10 @@ Deep learning demos for 5G/6G wireless systems using TensorFlow and [Sionna](htt
 
 ⚠️ **Note:** This project is under active development and not accepting external contributions at this time.
 
+## Author and Maintainer
+
+**Srikanth Pagadarai <srikanth.pagadarai@gmail.com>**
+
 ## Overview
 
 This repository contains neural network-based demos for 5G/6G communication systems:

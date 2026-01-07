@@ -1,3 +1,6 @@
+.. SPDX-License-Identifier: MIT
+.. Copyright (c) 2025–present Srikanth Pagadarai
+
 Installation
 ============
 
@@ -81,7 +84,7 @@ This project provides helper scripts for provisioning GPU-enabled virtual machin
 
 .. note::
 
-   While we provide GCP-specific tooling, you can use any cloud provider that offers GPU instances (AWS, Azure, etc.) or your own hardware. The key requirements are an NVIDIA GPU with CUDA support and Docker with the NVIDIA Container Toolkit.
+   While GCP-specific tooling is provided, any cloud provider can be used that offers GPU instances (AWS, Azure, etc.) or your own hardware. The key requirements are an NVIDIA GPU with CUDA support and Docker with the NVIDIA Container Toolkit.
 
 GCP Management Files Overview
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 from .config import Config
 from .power_amplifier import PowerAmplifier
 from .ls_dpd import LeastSquaresDPD

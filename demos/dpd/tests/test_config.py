@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 """Tests for DPD Config dataclass."""
 
 from demos.dpd.src.config import Config

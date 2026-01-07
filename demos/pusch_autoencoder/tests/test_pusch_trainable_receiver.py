@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025–present Srikanth Pagadarai
+
 import pytest
 import tensorflow as tf
 from sionna.phy.nr import PUSCHConfig
