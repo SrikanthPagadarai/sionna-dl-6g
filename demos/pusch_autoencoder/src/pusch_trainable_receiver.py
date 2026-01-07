@@ -177,7 +177,7 @@ class PUSCHTrainableReceiver(PUSCHReceiver):
         In training mode, step 5 is skipped because:
 
         - TB decoding is non-differentiable (hard decisions)
-        - We need LLRs for BCE loss against coded bits ``c``
+        - Need LLRs for BCE loss against coded bits ``c``
         - The loss provides gradients to train the neural detector
 
         The squeeze operation on LLRs (when shape has singleton dimension 2)

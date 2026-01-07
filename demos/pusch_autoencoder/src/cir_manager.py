@@ -745,8 +745,8 @@ class CIRManager:
 
         Notes
         -----
-        This method is primarily used for baseline evaluation where we need
-        a ``CIRDataset`` object. For autoencoder training, use
+        This method is primarily used for baseline evaluation where
+        a ``CIRDataset`` object is needed. For autoencoder training, use
         ``load_from_tfrecord(group_for_mumimo=True)`` directly to get
         tensors that can be indexed during training.
         """

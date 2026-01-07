@@ -9,8 +9,8 @@ allowing gradient flow through the constellation geometry.
 Design Approach
 ---------------
 Rather than training Sionna's internal Constellation object directly (which
-applies normalization in ways that can complicate gradient flow), we maintain
-explicit ``tf.Variable`` tensors for the real and imaginary parts of each
+applies normalization in ways that can complicate gradient flow), explicit
+``tf.Variable`` tensors are maintaind for the real and imaginary parts of each
 constellation point. Normalization is applied explicitly in ``call()`` before
 mapping, ensuring consistent behavior while preserving gradients.
 

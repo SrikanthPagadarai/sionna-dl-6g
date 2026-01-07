@@ -10,13 +10,13 @@ def create_dummy_cir_data(
     """Create dummy CIR data for testing.
 
     Note: The actual CIRGenerator expects data with time steps dimension,
-    so we create simplified test data that mimics the real structure.
+    so simplified test data is created that mimics the real structure.
     """
     num_tx = 4  # Will be sampled from
     num_tx_ant = 4
 
-    # For testing, we'll create simple data that doesn't require the generator's
-    # complex transpose operations. We'll just test initialization.
+    # For testing, simple data is created that doesn't require the generator's
+    # complex transpose operations. Only initialization is tested.
     # Channel coefficients:
     # [dataset_size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths, num_time_steps]
     a_shape = (
@@ -113,7 +113,7 @@ def test_cir_generator_multiple_samples():
     print(f"  First sample a shape: {samples[0][0].shape}")
     print(f"  First sample tau shape: {samples[0][1].shape}")
 
-    # Check that we got the right number of samples
+    # Check that the right number of samples is returned
     assert len(samples) == num_samples
 
     # Check that samples have consistent shapes
@@ -139,7 +139,7 @@ def test_cir_generator_randomness():
     a2, tau2 = next(gen)
 
     # Samples should be different (due to random sampling)
-    # We check this by comparing if they're not identical
+    # Checked by comparing if they're not identical
     a_same = tf.reduce_all(tf.equal(a1, a2))
     tau_same = tf.reduce_all(tf.equal(tau1, tau2))
 
@@ -149,7 +149,6 @@ def test_cir_generator_randomness():
 
     # With random sampling, it's extremely unlikely they're identical
     # (though theoretically possible with small dataset)
-    # We just check that the test runs without errors
 
 
 @pytest.mark.skip(reason="Requires properly formatted CIR data from scene generation")

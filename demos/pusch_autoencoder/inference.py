@@ -264,12 +264,11 @@ for num_bs_ant in NUM_BS_ANT_VALUES:
     ber_plot = PlotBER(f"PUSCH Autoencoder Inference ({num_bs_ant} BS Antennas)")
 
     # Use wrapper function that handles scalar->vector Eb/N0 conversion
-    # Fewer iterations than baseline (50 vs 500) since we just need rough comparison
     ber, bler = ber_plot.simulate(
         ae_model_for_ber,
         ebno_dbs=ebno_db,
-        max_mc_iter=50,  # Reduced iterations for faster inference evaluation
-        num_target_block_errors=200,  # Lower target for faster convergence
+        max_mc_iter=500,
+        num_target_block_errors=2000,
         batch_size=batch_size,
         soft_estimates=False,  # Hard-decision BER after LDPC decoding
         show_fig=False,
