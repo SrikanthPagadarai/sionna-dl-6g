@@ -258,6 +258,7 @@ class NeuralNetworkDPD(Layer):
         self._num_features_per_sample = 5
         self._input_size = self._num_features_per_sample * self._memory_depth
 
+        # [nn-dpd-definition-start]
         # Project input features to hidden dimension.
         self._input_dense = Dense(
             self._num_filters,
@@ -284,6 +285,7 @@ class NeuralNetworkDPD(Layer):
             bias_initializer="zeros",
             name="output",
         )
+        # [nn-dpd-definition-end]
 
     def _create_sliding_windows_batched(self, signal):
         """
@@ -420,6 +422,7 @@ class NeuralNetworkDPD(Layer):
         skip_imag = features[..., 2 * M - 1]
         skip = tf.stack([skip_real, skip_imag], axis=-1)  # [B, N, 2]
 
+        # [nn-dpd-call-start]
         # Forward through network.
         z = self._input_dense(features)  # [B, N, num_filters]
 
@@ -430,6 +433,7 @@ class NeuralNetworkDPD(Layer):
 
         # Skip connection: network learns correction relative to identity.
         z = z + skip
+        # [nn-dpd-call-end]
 
         # Convert back to complex.
         y = self._output_to_complex(z)

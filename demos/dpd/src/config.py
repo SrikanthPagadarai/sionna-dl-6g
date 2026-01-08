@@ -86,6 +86,7 @@ class Config:
     1024
     """
 
+    # [phy-parameters-start]
     # --- Mutable parameters (user-configurable at initialization) ---
     seed: int = field(default=42)
     batch_size: int = field(default=100)
@@ -109,6 +110,7 @@ class Config:
     # --- Modulation and coding parameters (immutable) ---
     _num_bits_per_symbol: int = field(init=False, default=4, repr=False)
     _coderate: float = field(init=False, default=0.5, repr=False)
+    # [phy-parameters-end]
 
     def __post_init__(self):
         # Asymmetric guard bands: 200 lower + 199 upper + 1 DC = 400 nulled

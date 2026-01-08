@@ -496,7 +496,7 @@ class LeastSquaresDPD(tf.keras.layers.Layer):
         Compute least-squares coefficient estimate.
 
         Solves the regularized least-squares problem:
-        ``min ||X @ coeffs - y||² + lambda*||coeffs||²``
+        ``min ||X @ coeffs - y||^2 + lambda*||coeffs||^2``
 
         Parameters
         ----------
