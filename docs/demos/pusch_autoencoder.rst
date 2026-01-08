@@ -4,9 +4,20 @@ Site-Specific PUSCH Autoencoder
 Overview
 --------
 
-This demo implements an end-to-end autoencoder for the 5G NR Physical Uplink Shared Channel (PUSCH), jointly optimizing a trainable constellation at the transmitter and a neural MIMO detector at the receiver. The system operates over site-specific ray-traced channels derived from a realistic Munich urban environment, enabling the autoencoder to learn communication strategies adapted to the propagation characteristics of a specific deployment.
+This demo implements an end-to-end autoencoder for the 5G NR Physical Uplink Shared Channel (PUSCH), by jointly optimizing a trainable constellation at the transmitter and a neural MIMO detector at the receiver. The system operates over site-specific ray-traced channels derived from a realistic Munich urban environment, enabling the autoencoder to adapt to the propagation characteristics of this specific deployment.
 
-The autoencoder extends concepts from classical communication autoencoders (O'Shea & Hoydis, 2017) to a multi-user MIMO uplink scenario with 4 UEs (each with 4 antennas) transmitting to a base station with 16 or 32 antennas. This builds upon the foundations established in the `Sionna 5G NR PUSCH Tutorial <https://nvlabs.github.io/sionna/phy/tutorials/5G_NR_PUSCH.html>`_, the `Link-Level Simulations with Ray Tracing Tutorial <https://nvlabs.github.io/sionna/phy/tutorials/Link_Level_Simulations_with_RT.html>`_, and the `Autoencoder Tutorial <https://nvlabs.github.io/sionna/phy/tutorials/Autoencoder.html>`_.
+The autoencoder applies concepts from classical communication autoencoders (O'Shea & Hoydis, 2017) to a multi-user MIMO uplink scenario with 4 UEs (each with 4 antennas) transmitting to a base station with 16 or 32 antennas. This demo builds upon the following Sionna tutorials: 
+
+- the `5G NR PUSCH Tutorial <https://nvlabs.github.io/sionna/phy/tutorials/5G_NR_PUSCH.html>`_, 
+- the `Link-level simulations with Sionna RT <https://nvlabs.github.io/sionna/phy/tutorials/Link_Level_Simulations_with_RT.html>`_, and 
+- the `End-to-end Learning with Autoencoders <https://nvlabs.github.io/sionna/phy/tutorials/Autoencoder.html>`_.
+
+
+System Architecture
+-------------------
+
+The PUSCH link (:class:`~demos.pusch_autoencoder.src.system.PUSCHLinkE2E`) implements a complete uplink chain. 
+The architecture diagram depicting this class is shown below.
 
 .. image:: /_static/pusch_autoencoder/pusch_autoencoder_light.svg
    :class: only-light
@@ -16,36 +27,40 @@ The autoencoder extends concepts from classical communication autoencoders (O'Sh
    :class: only-dark
    :alt: PUSCH Autoencoder System Architecture
 
+For details regarding the OFDM slot structure, the MIMO configuration, and the 5G NR PUSCH parameters used in this demo, see the code-snippet extracted from :class:`~demos.pusch_autoencoder.src.config.Config` below.
 
-System Architecture
--------------------
-
-The PUSCH link (:class:`~demos.pusch_autoencoder.src.system.PUSCHLinkE2E`) implements a complete uplink chain: TB encoding, symbol mapping via trainable constellation, OFDM modulation with DMRS pilots, ray-traced channel application, and neural detection. The system uses MCS index 14 (16-QAM, ~0.6 code rate) with 16 PRBs (192 subcarriers) and single-layer transmission per UE.
-
-Channel impulse responses (CIRs) are pre-computed using Sionna's ray tracer on the Munich urban scene, with UE positions sampled within 5–400 m of the BS location. The :class:`~demos.pusch_autoencoder.src.cir_manager.CIRManager` handles TFRecord serialization and MU-MIMO grouping of individual UE channels into multi-user samples.
+.. literalinclude:: ../../demos/pusch_autoencoder/src/config.py
+   :language: python
+   :start-after: # [phy-parameters-start]
+   :end-before: # [phy-parameters-end]
 
 Trainable Transmitter
 ^^^^^^^^^^^^^^^^^^^^^
+The transmitter (:class:`~demos.pusch_autoencoder.src.pusch_trainable_transmitter.PUSCHTrainableTransmitter`) subclasses Sionna's ``PUSCHTransmitter`` with learnable constellation points. The sequence of operations implemented are as follows. First, information bits are encoded into a transport block, which are then mapped to QAM constellation symbols by the Mapper. The constellation points are initialized to 16-QAM points. They are set to be trainable when the autoencoder is being designed, and non-trainable when evaluating the baseline scenarios. Next, the modulated symbols are split into different layers which are then mapped onto OFDM resource grids. If precoding is enabled, the resource grids are further precoded so that there is one for each transmitter and antenna port, and these are the outputs of the transmit chain.
 
-The transmitter (:class:`~demos.pusch_autoencoder.src.pusch_trainable_transmitter.PUSCHTrainableTransmitter`) extends Sionna's ``PUSCHTransmitter`` with learnable constellation points. The 16 complex constellation points are stored as separate real/imaginary ``tf.Variable`` tensors, initialized from standard Gray-coded 16-QAM. Normalization to unit average power is applied explicitly at each forward pass to maintain the SNR interpretation.
+The steps involved in setting up the custom constellation are shown in the code-snippet below (extracted from :class:`~demos.pusch_autoencoder.src.pusch_trainable_transmitter.PUSCHTrainableTransmitter`).
 
-.. code-block:: python
-   :caption: Constellation normalization (``pusch_trainable_transmitter.py:107-146``)
+.. literalinclude:: ../../demos/pusch_autoencoder/src/pusch_trainable_transmitter.py
+   :language: python
+   :start-after: # [custom-constellation-start]
+   :end-before: # [custom-constellation-end]
 
-    def get_normalized_constellation(self):
-        points = tf.complex(self._points_r, self._points_i)
-        # Center: remove DC offset for balanced constellation
-        points = points - tf.reduce_mean(points)
-        # Normalize: scale to unit average power
-        energy = tf.reduce_mean(tf.square(tf.abs(points)))
-        points = points / tf.cast(tf.sqrt(energy), points.dtype)
-        return points
 
+Trainable Receiver
+^^^^^^^^^^^^^^^^^^
+The receiver implements a hybrid classical/neural-network architecture. The sequence of operations implemented are as follows. First, channel estimation is performed. If channel_estimator is chosen to be “perfect”, this step is skipped and the perfect channel state information (CSI) is used downstream. Next, MIMO detection is carried out with an LMMSE Detector. The resulting LLRs for each layer are then combined to transport blocks and are decoded.
+
+The only modification in the subclassed trainable receiver (:class:`~demos.pusch_autoencoder.src.pusch_trainable_receiver.PUSCHTrainableReceiver`) is the provision to choose between a classical LMMSE detector versus the neural-network based detector:
+
+.. literalinclude:: ../../demos/pusch_autoencoder/src/pusch_trainable_receiver.py
+   :language: python
+   :start-after: # [detector-selection-start]
+   :end-before: # [detector-selection-end]
 
 Neural Detector
-^^^^^^^^^^^^^^^
+"""""""""""""""
 
-The neural detector (:class:`~demos.pusch_autoencoder.src.pusch_neural_detector.PUSCHNeuralDetector`) implements a hybrid classical/neural architecture that refines LS channel estimates and LMMSE soft symbols rather than learning detection from scratch. The architecture processes shared features through convolutional residual blocks before branching into channel estimation refinement and LLR prediction heads.
+The neural detector (:class:`~demos.pusch_autoencoder.src.pusch_neural_detector.PUSCHNeuralDetector`) implements a residual learning architecture that refines LS channel estimates and LMMSE soft symbols rather than learning detection from scratch. The motivation behind this design is that learning residual corrections to classical estimates is more stable than learning detection from scratch. The architecture processes shared features through convolutional residual blocks to obtain channel estimation refinement before proceeding to refine LLR through MIMO-OFDM detection head.
 
 .. image:: /_static/pusch_autoencoder/pusch_autoencoder_neural_detector_toplevel_light.svg
    :class: only-light
@@ -55,7 +70,37 @@ The neural detector (:class:`~demos.pusch_autoencoder.src.pusch_neural_detector.
    :class: only-dark
    :alt: Neural Detector Top-Level Architecture
 
-Three trainable correction scales control how much the neural network deviates from classical LMMSE processing. These scales start at zero (pure classical behavior) and are learned during training, providing interpretable indicators of where neural refinement helps most.
+Three trainable correction scales control how much the neural network deviates from classical LS channel estimation followed by LMMSE MIMO-OFDM detection. These scales start at zero (pure classical behavior) and are learned during training, providing interpretable indicators of where neural refinement helps most.
+
+The initialization of various components in the shared backbone, the channel estimation refinement head, and the MIMO-OFDM detection head are as shown below:
+
+.. literalinclude:: ../../demos/pusch_autoencoder/src/pusch_neural_detector.py
+   :language: python
+   :start-after: # [autoencoder-definition-start]
+   :end-before:  # [autoencoder-definition-end]
+
+The features are processed by the shared backbone network as shown below:
+
+.. literalinclude:: ../../demos/pusch_autoencoder/src/pusch_neural_detector.py
+   :language: python
+   :start-after: # [shared-backbone-start]
+   :end-before:  # [shared-backbone-end]
+
+by the channel estimation head as shown below:
+
+.. literalinclude:: ../../demos/pusch_autoencoder/src/pusch_neural_detector.py
+   :language: python
+   :start-after: # [ce-head-start]
+   :end-before:  # [ce-head-end]
+
+and by the MIMO-OFDM detection head as shown below:
+
+.. literalinclude:: ../../demos/pusch_autoencoder/src/pusch_neural_detector.py
+   :language: python
+   :start-after: # [det-head-start]
+   :end-before:  # [det-head-end]
+   
+The residual blocks follow the standard design which consists of cascaded units of layer normalization, activation function, and dense layer, followed by a skip connection.
 
 .. image:: /_static/pusch_autoencoder/pusch_autoencoder_res_block_light.svg
    :class: only-light
@@ -66,18 +111,20 @@ Three trainable correction scales control how much the neural network deviates f
    :alt: Residual Block Architecture
 
 
-Training
---------
+Ray-traced Channel
+^^^^^^^^^^^^^^^^^^
+Sionna RT module can be used simulate environment-specific and physically accurate channel realizations for a given scene and user position. It is built on top of `Mitsuba 3 <https://www.mitsuba-renderer.org/>`_.
 
-Training minimizes binary cross-entropy (BCE) loss between predicted LLRs and transmitted coded bits, plus a constellation regularization term that prevents collapse by penalizing constellation points closer than a minimum distance threshold. The system uses gradient accumulation over 16 micro-batches with separate Adam optimizers for transmitter variables (LR 1e-2), receiver correction scales (LR 1e-2), and neural network weights (LR 1e-4), all with cosine decay schedules over 5,000 iterations.
+Setting up the ray tracer
+"""""""""""""""""""""""""
+The ray-traced channel generated using Sionna-RT consists of a single-cell, multiuser MIMO layout with one base station serving four users, equipped with 16 (or 32) antennas and 4 antennas, respectively, using planar arrays with half-wavelength element spacing and cross polarization. An integrated urban scene located in Munich is loaded and the base station is placed at ``[8.5, 21, 27]``, with its orientation fixed toward the service area, while a static camera at ``[0, 80, 500]`` is used to generate verification renders. Propagation is computed deterministically with a maximum interaction depth of 5, spatial resolution cell size of (1.0, 1.0), and samples per transmitter set to 10000, producing a dense radio map of path gain across the environment. For more details see the code-snippet extracted from :class:`~demos.pusch_autoencoder.src.config.Config` below.
 
-Eb/N0 is sampled uniformly from -2 to 10 dB for each batch, enabling the autoencoder to learn robust strategies across the operating SNR range. Training requires pre-generated CIR data via the :class:`~demos.pusch_autoencoder.src.cir_manager.CIRManager`.
+.. literalinclude:: ../../demos/pusch_autoencoder/src/config.py
+   :language: python
+   :start-after: # [rt-parameters-start]
+   :end-before: # [rt-parameters-end]
 
-
-Results
--------
-
-Performance is evaluated using BER and BLER Monte Carlo simulation, comparing the trained autoencoder against baseline LMMSE detection with both perfect and imperfect (LS-estimated) CSI. The following figures show results for 16 and 32 BS antenna configurations.
+The rendered figure below visualizes this radio map overlaid on the scene geometry, and shows the transmitter placement, the dominant propagation regions, and the obstruction effects prior to receiver sampling. Although the focus is geometric, the physical-layer context is fixed via a subcarrier spacing of 30 kHz and num_time_steps = 14, which later determine the temporal resolution of the channel representation.
 
 .. figure:: ../../demos/pusch_autoencoder/results/munich_ue_positions.png
    :alt: Munich UE Positions
@@ -85,6 +132,27 @@ Performance is evaluated using BER and BLER Monte Carlo simulation, comparing th
    :width: 80%
 
    Ray-traced Munich urban scene showing sampled UE positions for CIR generation.
+
+Creating a CIR dataset
+""""""""""""""""""""""
+Receiver positions are sampled in batches of 500 from the radio map using path-gain constraints (-130 dB to 0 dB) and a distance window of 5-400 m around the base station, ensuring physically meaningful links. For each batch, all receivers are updated in the scene and multipath propagation is recomputed with up to 10000 paths per transmitter, preserving line-of-sight and higher-order interactions up to the specified depth. Continuous path delays and complex gains are then discretized into channel impulse responses using a sampling frequency equal to the subcarrier spacing (30 kHz) over 14 time steps, after which all CIRs are padded to a common maximum number of paths and concatenated. The resulting tensors yield a geometry-consistent CIR dataset that can be repeatedly sampled during training and inference in fixed-size batches (e.g., batch_size = 20) for link-level simulations while preserving the underlying ray-traced propagation structure. For more details, see :class:`~demos.pusch_autoencoder.src.cir_manager.CIRManager`.
+
+Training
+--------
+
+Training minimizes binary cross-entropy (BCE) loss between predicted LLRs and transmitted coded bits, plus a constellation regularization term that prevents collapse by penalizing constellation points closer than a minimum distance threshold. The system uses gradient accumulation over 16 micro-batches with separate Adam optimizers for transmitter variables (LR 1e-2), receiver correction scales (LR 1e-2), and neural network weights (LR 1e-4), all with cosine decay schedules over 5,000 iterations. Eb/N0 is sampled uniformly from -2 to 10 dB for each batch, enabling the autoencoder to learn robust strategies across the operating SNR range. As mentioned previously, generating CIR data via the :class:`~demos.pusch_autoencoder.src.cir_manager.CIRManager` is a pre-requisite to training. The important pieces in the training logic are shown below:
+
+.. literalinclude:: ../../demos/pusch_autoencoder/training.py
+   :language: python
+   :start-after: # [training-core-start]
+   :end-before:  # [training-core-end]
+
+Results
+-------
+
+Performance is evaluated using BER and BLER Monte Carlo simulation, comparing the trained autoencoder against baseline LMMSE detection with both perfect and imperfect (LS-estimated) CSI. The following figures show results for 16 and 32 BS antenna configurations.
+
+In the case where the number of BS antennas was 16, since this number exactly matched the total number of streams, no additional spatial diversity was available for the neural detector to exploit and the performance improvement observed was minimal.
 
 .. figure:: ../../demos/pusch_autoencoder/results/ber_plot_1bs_16bs_ant_x_4ue_4ue_ant.png
    :alt: BER Plot 16 BS Antennas
@@ -100,6 +168,8 @@ Performance is evaluated using BER and BLER Monte Carlo simulation, comparing th
 
    BLER comparison: autoencoder vs. baseline LMMSE with 16 BS antennas.
 
+On the other hand, when additional spatial diveristy was made available, the neural detector was able to exploit the additional degrees of freedom and outperform conventional LS channel estimation combined with LMMSE detection.
+
 .. figure:: ../../demos/pusch_autoencoder/results/ber_plot_1bs_32bs_ant_x_4ue_4ue_ant.png
    :alt: BER Plot 32 BS Antennas
    :align: center
@@ -113,6 +183,8 @@ Performance is evaluated using BER and BLER Monte Carlo simulation, comparing th
    :width: 80%
 
    BLER comparison: autoencoder vs. baseline LMMSE with 32 BS antennas.
+
+The learned constellations in both scenarios are shown below.
 
 .. figure:: ../../demos/pusch_autoencoder/results/constellation_normalized_ant16.png
    :alt: Learned Constellation 16 Antennas
@@ -128,7 +200,7 @@ Performance is evaluated using BER and BLER Monte Carlo simulation, comparing th
 
    Learned constellation geometry (32 BS antennas) compared to standard 16-QAM.
 
-The autoencoder demonstrates improved performance over imperfect-CSI LMMSE baseline, particularly at mid-to-high SNR where channel estimation errors dominate. The learned constellation points deviate moderately from standard 16-QAM, adapting to the site-specific channel statistics while maintaining sufficient minimum distance for reliable detection.
+In conclusion, the autoencoder demonstrates improved performance over imperfect-CSI baseline, particularly at mid-to-high SNR where channel estimation errors dominate. The learned constellation points adapt to the site-specific channel statistics while maintaining sufficient minimum distance for reliable detection.
 
 
 References

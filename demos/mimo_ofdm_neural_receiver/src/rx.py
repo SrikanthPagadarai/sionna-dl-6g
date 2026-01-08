@@ -88,10 +88,10 @@ class Rx:
 
         Parameters
         ----------
-        cfg : Config
+        cfg : ~demos.mimo_ofdm_neural_receiver.src.config.Config
             Configuration specifying modulation, coding, and CSI mode.
 
-        csi : CSI
+        csi : ~demos.mimo_ofdm_neural_receiver.src.csi.CSI
             CSI object for accessing ground-truth channel (perfect-CSI mode)
             and the ``remove_nulled_scs`` utility.
 

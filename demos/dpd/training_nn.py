@@ -224,6 +224,7 @@ print(f"Training from {start_iteration} to {target_iteration}")
 # =============================================================================
 # Define training step (graph-compiled for performance)
 # =============================================================================
+# [nn-training-grad-compute-start]
 @tf.function(reduce_retracing=True)
 def train_step(batch_size):
     """
@@ -256,6 +257,9 @@ def train_step(batch_size):
     return loss, grads
 
 
+# [nn-training-grad-compute-end]
+
+
 # =============================================================================
 # Align iterations to accumulation steps
 # =============================================================================
@@ -284,6 +288,7 @@ accumulated_grads = [
 # Use tensor for batch_size to avoid tf.function retracing.
 batch_size_tensor = tf.constant(BATCH_SIZE, dtype=tf.int32)
 
+# [nn-training-start]
 for i in range(start_iteration, target_iteration):
     # Forward pass and gradient computation.
     loss, grads = train_step(batch_size_tensor)
@@ -310,6 +315,7 @@ for i in range(start_iteration, target_iteration):
         end="",
         flush=True,
     )
+# [nn-training-end]
 
 print("\n\nTraining complete.")
 

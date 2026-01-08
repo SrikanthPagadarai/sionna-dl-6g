@@ -231,34 +231,6 @@ class PUSCHNeuralDetector(Layer):
         self._demapper = Demapper("maxlog", constellation=self._constellation)
 
         # =====================================================================
-        # Trainable Correction Scales
-        # =====================================================================
-        # Initialize all scales to 0.0 so that initial output matches classical
-        # LMMSE exactly. This provides a stable starting point and enables
-        # graceful degradation if training fails to improve on classical.
-
-        # Channel estimate correction: h_refined = h_ls + scale * delta_h
-        # Unbounded since corrections can be positive or negative.
-        self._h_correction_scale = tf.Variable(
-            0.0, trainable=True, name="h_correction_scale", dtype=tf.float32
-        )
-
-        # LLR correction: llr_final = llr_lmmse + scale * delta_llr
-        # Unbounded to allow both confidence increase and decrease.
-        self._llr_correction_scale = tf.Variable(
-            0.0, trainable=True, name="llr_correction_scale", dtype=tf.float32
-        )
-
-        # Error variance correction in log domain for numerical stability:
-        # err_var_refined = exp(log(err_var) + scale * delta_log_err)
-        # Uses softplus(raw_value) to ensure positivity; softplus(0) = ln(2) ≈ 0.69
-        # but we want initial scale ≈ 1.0, and softplus(0.54) ≈ 1.0
-        # For simplicity, initialize to 0.0; the network will adapt.
-        self._err_var_correction_scale_raw = tf.Variable(
-            0.0, trainable=True, name="err_var_correction_scale_raw", dtype=tf.float32
-        )
-
-        # =====================================================================
         # Compute Input Feature Dimensions
         # =====================================================================
         # The shared backbone receives a concatenation of multiple feature types,
@@ -276,6 +248,7 @@ class PUSCHNeuralDetector(Layer):
             + 1  # no: noise variance (log scale for numerical stability)
         )
 
+        # [autoencoder-definition-start]
         # =====================================================================
         # Shared Backbone Network
         # =====================================================================
@@ -370,6 +343,35 @@ class PUSCHNeuralDetector(Layer):
             activation=None,
             name="det_conv_out",
         )
+
+        # =====================================================================
+        # Trainable Correction Scales
+        # =====================================================================
+        # Initialize all scales to 0.0 so that initial output matches classical
+        # LMMSE exactly. This provides a stable starting point and enables
+        # graceful degradation if training fails to improve on classical.
+
+        # Channel estimate correction: h_refined = h_ls + scale * delta_h
+        # Unbounded since corrections can be positive or negative.
+        self._h_correction_scale = tf.Variable(
+            0.0, trainable=True, name="h_correction_scale", dtype=tf.float32
+        )
+
+        # LLR correction: llr_final = llr_lmmse + scale * delta_llr
+        # Unbounded to allow both confidence increase and decrease.
+        self._llr_correction_scale = tf.Variable(
+            0.0, trainable=True, name="llr_correction_scale", dtype=tf.float32
+        )
+
+        # Error variance correction in log domain for numerical stability:
+        # err_var_refined = exp(log(err_var) + scale * delta_log_err)
+        # Uses softplus(raw_value) to ensure positivity; softplus(0) = ln(2) ≈ 0.69
+        # but we want initial scale ≈ 1.0, and softplus(0.54) ≈ 1.0
+        # For simplicity, initialize to 0.0; the network will adapt.
+        self._err_var_correction_scale_raw = tf.Variable(
+            0.0, trainable=True, name="err_var_correction_scale_raw", dtype=tf.float32
+        )
+        # [autoencoder-definition-end]
 
         # =====================================================================
         # State for Auxiliary Losses
@@ -639,6 +641,7 @@ class PUSCHNeuralDetector(Layer):
         )
         shared_input = tf.cast(shared_input, tf.float32)
 
+        # [shared-backbone-start]
         # =====================================================================
         # Shared Backbone Forward Pass
         # =====================================================================
@@ -646,7 +649,9 @@ class PUSCHNeuralDetector(Layer):
         for block in self._shared_res_blocks:
             shared_features = block(shared_features)
         # shared_features: [B, H, W, num_filters]
+        # [shared-backbone-end]
 
+        # [ce-head-start]
         # =====================================================================
         # Channel Estimation Refinement Head
         # =====================================================================
@@ -680,6 +685,7 @@ class PUSCHNeuralDetector(Layer):
         log_err = tf.math.log(err_var_flat + 1e-10)
         log_err_refined = log_err + err_var_scale * tf.cast(delta_loge, log_err.dtype)
         err_var_flat_refined = tf.exp(log_err_refined)
+        # [ce-head-end]
 
         # =====================================================================
         # Store Refined Estimates for Auxiliary Losses
@@ -781,6 +787,7 @@ class PUSCHNeuralDetector(Layer):
         # Fuse shared backbone features with LMMSE outputs
         combined_features = tf.concat([shared_features_data, lmmse_features], axis=-1)
 
+        # [det-head-start]
         # Injection convolution reduces dimensions and fuses information
         det_features = self._det_inject_conv(combined_features)
 
@@ -790,6 +797,7 @@ class PUSCHNeuralDetector(Layer):
 
         # Predict LLR corrections
         llr_correction = self._det_conv_out(det_features)
+        # [det-head-end]
 
         # =====================================================================
         # Final LLR with Scaled Correction

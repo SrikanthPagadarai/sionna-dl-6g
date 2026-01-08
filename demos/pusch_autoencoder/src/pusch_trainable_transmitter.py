@@ -107,7 +107,6 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
         """
         return [self._points_r, self._points_i]
 
-    # [get-normalized-constellation-start]
     def get_normalized_constellation(self):
         """
         Compute centered and power-normalized constellation points.
@@ -149,8 +148,6 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
 
         return points
 
-    # [get-normalized-constellation-end]
-
     def _setup_custom_constellation(self):
         """
         Initialize trainable constellation from standard QAM geometry.
@@ -174,6 +171,7 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
         2. Providing access to both raw and normalized points
         3. Matching the exact behavior of Sionna's standard constellation
         """
+        # [custom-constellation-start]
         # Initialize from standard QAM - a well-designed starting point
         # that Gray-coded bit mapping optimizes for AWGN channels
         qam_points = Constellation(
@@ -208,6 +206,7 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
 
         # Replace the mapper to use trainable constellation
         self._mapper = Mapper(constellation=self._constellation)
+        # [custom-constellation-end]
 
     def call(self, inputs):
         """

@@ -214,6 +214,7 @@ class PUSCHTrainableReceiver(PUSCHReceiver):
             # Imperfect CSI: LS estimation from DMRS (realistic scenario)
             h_hat, err_var = self._channel_estimator(y, no)
 
+        # [detector-selection-start]
         # =====================================================================
         # MIMO Detection with Constellation Synchronization
         # =====================================================================
@@ -226,6 +227,7 @@ class PUSCHTrainableReceiver(PUSCHReceiver):
             )
         else:
             llr = self._mimo_detector(y, h_hat, err_var, no)
+        # [detector-selection-end]
 
         # =====================================================================
         # Layer Demapping

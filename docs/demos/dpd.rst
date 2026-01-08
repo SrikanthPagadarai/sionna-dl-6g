@@ -76,7 +76,7 @@ The NN-DPD (:class:`~demos.dpd.src.nn_dpd.NeuralNetworkDPD`) uses a feedforward 
    :class: only-dark
    :alt: Neural Network DPD Architecture
 
-This network processes sliding windows of complex samples (split into real/imaginary channels), and their envelopes raised to powers of 2, 4, and 6 through residual blocks encapsulated between input and output dense layers. The residual blocks learn arbitrary nonlinear mappings and follow the standard design consisting of layer normalization, activation function, dense layer, and a skip connection. The output layer is initialized to zeros, ensuring the initial network output equals the input (identity function via skip connection). This provides a stable starting point where training learns corrections relative to the pass-through behavior.
+This network processes sliding windows of complex samples (split into real/imaginary channels), and their envelopes raised to powers of 2, 4, and 6 through residual blocks encapsulated between input and output dense layers. The residual blocks follow the standard design which consists of cascaded units of layer normalization, activation function, and dense layer, followed by a skip connection. The output layer is initialized to zeros, ensuring the initial network output equals the input (identity function via skip connection). This provides a stable starting point where training learns corrections relative to the pass-through behavior.
 
 The input/output dense layers and the residual blocks are initialized as shown below:
 
@@ -104,8 +104,21 @@ Both DPD methods are trained using the ILA as described previously. To recap, an
 5. Compute loss: :math:`\mathcal{L} = \|\text{DPD}(y_{\text{norm}}) - u\|^2`
 6. Update DPD parameters
 
-LS-DPD converges in 3-5 iterations using Newton-style updates with learning rate 0.75. NN-DPD was trained over 25,000 gradient descent iterations with Adam optimizer (learning rate 1e-3), using gradient accumulation over 4 mini-batches of size 16 for an effective batch size of 64.
+LS-DPD converges in 3-5 iterations using Newton-style updates with learning rate 0.75. 
 
+NN-DPD was trained over 25000 gradient descent iterations with Adam optimizer (learning rate 1e-3). Gradient accumulation over 4 mini-batches of size 16 (for an effective batch size of 64) was implemented as follows:
+
+.. literalinclude:: ../../demos/dpd/training_nn.py
+   :language: python
+   :start-after: # [nn-training-start]
+   :end-before:  # [nn-training-end]
+
+where, the graph-compiled gradient computation step was implemented as shown below:
+
+.. literalinclude:: ../../demos/dpd/training_nn.py
+   :language: python
+   :start-after: # [nn-training-grad-compute-start]
+   :end-before:  # [nn-training-grad-compute-end]
 
 Results
 -------
