@@ -222,6 +222,7 @@ class NN_DPDSystem(DPDSystem):
         The loss is computed in the normalized domain to ensure consistent
         gradient magnitudes regardless of actual signal power.
         """
+        # [ila_architecture-start]
         # Steps 1-3: Forward through predistorter and PA.
         signals = self._forward_signal_path(x)
         u_norm = signals["u_norm"]
@@ -247,6 +248,7 @@ class NN_DPDSystem(DPDSystem):
         )
 
         loss = self._loss_fn(u_target_ri, u_hat_ri) * self._loss_scale
+        # [ila_architecture-end]
         return loss
 
     def _inference_forward(self, x):
