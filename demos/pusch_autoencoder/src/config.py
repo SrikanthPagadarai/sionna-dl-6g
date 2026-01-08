@@ -70,6 +70,7 @@ class Config:
     DFT-s-OFDM transform precoding at the physical layer.
     """
 
+    # [phy-parameters-start]
     # =========================================================================
     # User-Configurable Parameters
     # =========================================================================
@@ -104,6 +105,33 @@ class Config:
     _num_ue_ant: int = field(init=False, default=4, repr=False)
 
     # =========================================================================
+    # PUSCH / 5G NR Physical Layer Parameters
+    # =========================================================================
+    # 16 PRBs = 192 subcarriers, suitable for moderate throughput scenario.
+    _num_prb: int = field(init=False, default=16, repr=False)
+
+    # MCS index 14 with table 1 yields 16-QAM with ~0.6 coderate,
+    # providing a good balance between spectral efficiency and robustness.
+    _mcs_index: int = field(init=False, default=14, repr=False)
+
+    # Single layer per UE simplifies the autoencoder while still enabling
+    # meaningful MU-MIMO scenarios with 4 co-scheduled UEs.
+    _num_layers: int = field(init=False, default=1, repr=False)
+
+    # MCS table 1 is the default for PUSCH without 256-QAM support.
+    _mcs_table: int = field(init=False, default=1, repr=False)
+
+    # Frequency-domain processing avoids OFDM modulation/demodulation
+    # overhead and simplifies the neural network input structure.
+    _domain: str = field(init=False, default="freq", repr=False)
+
+    # Derived from MCS tables in __post_init__. Not set at field definition
+    # since they require MCSDecoderNR computation.
+    _num_bits_per_symbol: int = field(init=False, repr=False)
+    _target_coderate: float = field(init=False, repr=False)
+    # [phy-parameters-end]
+
+    # =========================================================================
     # CIR Generation Parameters
     # =========================================================================
     # Batch size for ray-tracing CIR generation. Larger batches improve
@@ -125,6 +153,7 @@ class Config:
     _pusch_num_subcarriers: int = field(init=False, default=1, repr=False)
     _pusch_num_symbols_per_slot: int = field(init=False, default=1, repr=False)
 
+    # [rt-parameters-start]
     # =========================================================================
     # Ray-Tracing Path Solver Configuration
     # =========================================================================
@@ -166,6 +195,7 @@ class Config:
 
     # Samples per pixel for anti-aliased rendering.
     _rm_num_samples: int = field(init=False, default=4096, repr=False)
+    # [rt-parameters-end]
 
     # =========================================================================
     # Training / Simulation Parameters
@@ -177,32 +207,6 @@ class Config:
     # Global random seed for reproducibility across CIR generation,
     # weight initialization, and sampling.
     _seed: int = field(init=False, default=42, repr=False)
-
-    # =========================================================================
-    # PUSCH / 5G NR Physical Layer Parameters
-    # =========================================================================
-    # 16 PRBs = 192 subcarriers, suitable for moderate throughput scenario.
-    _num_prb: int = field(init=False, default=16, repr=False)
-
-    # MCS index 14 with table 1 yields 16-QAM with ~0.6 coderate,
-    # providing a good balance between spectral efficiency and robustness.
-    _mcs_index: int = field(init=False, default=14, repr=False)
-
-    # Single layer per UE simplifies the autoencoder while still enabling
-    # meaningful MU-MIMO scenarios with 4 co-scheduled UEs.
-    _num_layers: int = field(init=False, default=1, repr=False)
-
-    # MCS table 1 is the default for PUSCH without 256-QAM support.
-    _mcs_table: int = field(init=False, default=1, repr=False)
-
-    # Frequency-domain processing avoids OFDM modulation/demodulation
-    # overhead and simplifies the neural network input structure.
-    _domain: str = field(init=False, default="freq", repr=False)
-
-    # Derived from MCS tables in __post_init__. Not set at field definition
-    # since they require MCSDecoderNR computation.
-    _num_bits_per_symbol: int = field(init=False, repr=False)
-    _target_coderate: float = field(init=False, repr=False)
 
     def __post_init__(self):
         """

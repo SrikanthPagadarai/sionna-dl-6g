@@ -224,7 +224,7 @@ optimizer_tx = tf.keras.optimizers.Adam(learning_rate=lr_schedule_tx)
 optimizer_scales = tf.keras.optimizers.Adam(learning_rate=lr_schedule_rx_scales)
 optimizer_rx = tf.keras.optimizers.Adam(learning_rate=lr_schedule_rx_nn)
 
-
+# [training-core-start]
 # =============================================================================
 # Gradient Computation Functions
 # =============================================================================
@@ -348,6 +348,7 @@ for i in range(num_training_iterations):
         with open(save_path, "wb") as f:
             pickle.dump(weights_dict, f)
         print(f"[Checkpoint] Saved weights at iteration {i + 1} -> {save_path}")
+# [training-core-end]
 
 print()  # Newline after progress display
 
