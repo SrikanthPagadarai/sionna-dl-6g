@@ -12,7 +12,7 @@ capturing PA behaviors that don't fit within the memory polynomial model.
 The architecture uses:
 
 - **Sliding window** input to capture memory effects (similar concept to MP)
-- **Amplitude features** (|x|^2, |x|^4, |x|^6) matching memory polynomial basis functions
+- **Amplitude features** (``|x|^2``, ``|x|^4``, ``|x|^6``) matching memory polynomial basis functions
 - **Residual blocks** for stable deep network training
 - **Skip connection** to ensure identity initialization
 - **Real-valued processing** of complex signals (split into I/Q)
@@ -150,7 +150,7 @@ class NeuralNetworkDPD(Layer):
     a sliding window over input samples, similar in concept to the
     memory polynomial approach.
 
-    The network receives explicit amplitude features (|x|^2, |x|^4, |x|^6) in
+    The network receives explicit amplitude features (``|x|^2``, ``|x|^4``, ``|x|^6``) in
     addition to I/Q components. This is critical because PA distortion is
     fundamentally amplitude-driven (AM-AM and AM-PM conversion). Without
     these features, the network must learn from scratch that amplitude
@@ -188,12 +188,13 @@ class NeuralNetworkDPD(Layer):
     PA nonlinearity is driven by instantaneous signal amplitude. The memory
     polynomial explicitly models terms like ``|x[n-m]|^p · x[n-m]`` where p
     is even (0, 2, 4, 6...) corresponding to odd-order nonlinearities. By
-    providing |x|^2, |x|^4, |x|^6 as explicit input features, the network is
+    providing ``|x|^2``, ``|x|^4``, ``|x|^6`` as explicit input features, the network is
     given direct access to the same basis functions that make memory
     polynomials effective for PA linearization.
 
-    Feature layout per sample (5 * memory_depth total features):
-    ``[real[n-M+1:n], imag[n-M+1:n], |x|^2[n-M+1:n], |x|^4[n-M+1:n], |x|^6[n-M+1:n]]``
+    Feature layout per sample (5 * memory_depth total features)::
+
+        [real[n-M+1:n], imag[n-M+1:n], |x|^2[n-M+1:n], |x|^4[n-M+1:n], |x|^6[n-M+1:n]]
 
     **Identity Initialization:**
 

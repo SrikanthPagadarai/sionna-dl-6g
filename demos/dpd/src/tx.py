@@ -60,7 +60,7 @@ class Tx(tf.keras.Model):
 
     Parameters
     ----------
-    config : Config
+    config : ~demos.dpd.src.config.Config
         Configuration object containing all RF and OFDM parameters.
 
     Attributes

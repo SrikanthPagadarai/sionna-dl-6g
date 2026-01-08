@@ -40,7 +40,7 @@ class LS_DPDSystem(DPDSystem):
     ----------
     training : bool
         Operating mode. True for training, False for inference.
-    config : Config
+    config : ~demos.dpd.src.config.Config
         Frozen configuration object with RF and OFDM parameters.
     dpd_order : int, optional
         Maximum polynomial order (must be odd). Default: 7.

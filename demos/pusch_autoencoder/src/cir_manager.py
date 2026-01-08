@@ -142,7 +142,7 @@ class CIRManager:
 
     Parameters
     ----------
-    config : Config, optional
+    config : ~demos.pusch_autoencoder.src.config.Config, optional
         Configuration object with system parameters. If ``None``, uses
         default ``Config()`` with standard MU-MIMO settings.
 
@@ -191,7 +191,7 @@ class CIRManager:
 
         Parameters
         ----------
-        config : Config, optional
+        config : ~demos.pusch_autoencoder.src.config.Config, optional
             System configuration. Defaults to ``Config()`` if not provided.
         """
         self.cfg = config if config is not None else Config()

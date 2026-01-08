@@ -32,14 +32,6 @@ Transmitter
    :undoc-members:
    :show-inheritance:
 
-Channel
--------
-
-.. autoclass:: demos.mimo_ofdm_neural_receiver.src.channel.Channel
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 Baseline Receiver
 -----------------
 

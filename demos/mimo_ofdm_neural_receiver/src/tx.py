@@ -50,7 +50,7 @@ class Tx:
 
     Parameters
     ----------
-    cfg : Config
+    cfg : ~demos.mimo_ofdm_neural_receiver.src.config.Config
         Configuration object containing modulation, coding, and resource
         grid parameters.
 
@@ -61,7 +61,7 @@ class Tx:
 
     Attributes
     ----------
-    _cfg : Config
+    _cfg : ~demos.mimo_ofdm_neural_receiver.src.config.Config
         Reference to configuration object.
 
     _channel_coding_off : bool

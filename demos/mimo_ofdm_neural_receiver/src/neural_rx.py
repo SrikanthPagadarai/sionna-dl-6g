@@ -177,7 +177,7 @@ class NeuralRx(Layer):
 
     Parameters
     ----------
-    cfg : Config
+    cfg : ~demos.mimo_ofdm_neural_receiver.src.config.Config
         Configuration containing resource grid, modulation, and code params.
 
     channel_coding_off : bool, (default False)
@@ -195,7 +195,7 @@ class NeuralRx(Layer):
 
     Attributes
     ----------
-    _cfg : Config
+    _cfg : ~demos.mimo_ofdm_neural_receiver.src.config.Config
         Reference to configuration object.
 
     _channel_coding_off : bool
@@ -229,7 +229,7 @@ class NeuralRx(Layer):
 
         Parameters
         ----------
-        cfg : Config
+        cfg : ~demos.mimo_ofdm_neural_receiver.src.config.Config
             Configuration specifying resource grid and modulation.
 
         channel_coding_off : bool, (default False)

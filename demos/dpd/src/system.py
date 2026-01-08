@@ -47,7 +47,7 @@ class DPDSystem(Layer):
     training : bool
         Operating mode. True for training (receiver not instantiated),
         False for inference (receiver instantiated).
-    config : Config
+    config : ~demos.dpd.src.config.Config
         Configuration object with RF and OFDM parameters.
     rms_input_dbm : float, optional
         Target RMS power for PA input in dBm. Default is 0.5 dBm,
@@ -57,23 +57,6 @@ class DPDSystem(Layer):
         (8x the 15.36 MHz baseband rate for 1024-FFT, 15 kHz spacing).
     **kwargs
         Additional keyword arguments passed to Keras Layer.
-
-    Attributes
-    ----------
-    dpd : Layer or None
-        The predistorter layer (set by subclass).
-    minimal_ofdm_receiver : Rx or None
-        Minimal OFDM receiver for EVM measurement (inference mode only).
-    signal_fs : float
-        Baseband signal sample rate in Hz.
-    pa_sample_rate : float
-        PA operating sample rate in Hz.
-    fft_size : int
-        OFDM FFT size.
-    cp_length : int
-        Cyclic prefix length in samples.
-    num_ofdm_symbols : int
-        Number of OFDM symbols per slot.
 
     Notes
     -----
@@ -195,7 +178,7 @@ class DPDSystem(Layer):
 
     @property
     def minimal_ofdm_receiver(self):
-        """Rx or None: OFDM receiver (only available in inference mode)."""
+        """demos.dpd.src.rx.Rx or None: OFDM receiver (only available in inference mode)."""
         return self._rx
 
     @property

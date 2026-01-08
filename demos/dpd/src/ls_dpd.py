@@ -85,15 +85,6 @@ class LeastSquaresDPD(tf.keras.layers.Layer):
     **kwargs
         Additional keyword arguments passed to Keras Layer.
 
-    Attributes
-    ----------
-    n_coeffs : int
-        Total number of DPD coefficients.
-    coeffs : tf.Tensor
-        Complex coefficient vector, shape ``[n_coeffs, 1]``.
-    coeff_history : list or None
-        History of coefficients across learning iterations (set externally).
-
     Notes
     -----
     **Why Odd-Order Only (Default)?**

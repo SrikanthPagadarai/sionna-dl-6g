@@ -36,7 +36,7 @@ class NN_DPDSystem(DPDSystem):
     ----------
     training : bool
         Operating mode. True enables gradient computation for training.
-    config : Config
+    config : ~demos.dpd.src.config.Config
         Configuration object with RF and OFDM parameters.
     dpd_memory_depth : int, optional
         Sliding window size for memory effects. Default: 4.
