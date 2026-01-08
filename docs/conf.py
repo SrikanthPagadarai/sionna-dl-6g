@@ -33,6 +33,14 @@ html_theme = "furo"
 html_static_path = ["_static"]
 html_title = "Next-Gen Wireless DL Demos"
 
+# Custom CSS and JS for lightbox functionality
+html_css_files = [
+    "css/lightbox.css",
+]
+html_js_files = [
+    "js/lightbox.js",
+]
+
 # Furo theme options
 html_theme_options = {
     "source_repository": "https://github.com/SrikanthPagadarai/nextgen-wireless-dl-demos",
