@@ -18,6 +18,8 @@ This is critical for fair comparison between perfect-CSI and estimated-CSI
 receiver paths.
 """
 
+from __future__ import annotations
+
 import os
 
 # Suppress TensorFlow logging before import to avoid cluttering output
