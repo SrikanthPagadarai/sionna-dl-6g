@@ -42,15 +42,6 @@ class PowerAmplifier(tf.keras.layers.Layer):
     **kwargs
         Additional keyword arguments passed to the Keras Layer base class.
 
-    Attributes
-    ----------
-    order : int
-        Polynomial order (fixed at 7). Only odd orders are used because
-        PA nonlinearity is predominantly odd-symmetric around zero.
-    memory_depth : int
-        Memory depth in samples (fixed at 4). Captures short-term memory
-        effects from bias network and thermal dynamics.
-
     Notes
     -----
     **miscellaneous:**
@@ -259,7 +250,7 @@ class PowerAmplifier(tf.keras.layers.Layer):
         **Why low amplitude?**
 
         At low input amplitudes, the PA operates linearly and higher-order
-        terms (|x|^2, |x|^4, etc.) become negligible. The measured gain
+        terms (``|x|^2``, ``|x|^4``, etc.) become negligible. The measured gain
         then reflects only the first-order (linear) coefficient.
         """
         # Generate low-amplitude test signal (stddev=0.1 keeps PA in linear region)

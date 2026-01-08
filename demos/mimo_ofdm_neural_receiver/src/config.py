@@ -79,22 +79,6 @@ class Config:
         Modulation order. Accepts ``BitsPerSym`` enum or equivalent int.
         Higher orders increase spectral efficiency but require better SNR.
 
-    Attributes
-    ----------
-    rg : ResourceGrid
-        Configured OFDM resource grid with pilot pattern. Created by
-        ``build()`` during initialization.
-
-    sm : StreamManagement
-        MIMO stream management object defining TX-RX stream associations.
-
-    k : int
-        Number of information bits per codeword (before LDPC encoding).
-
-    n : int
-        Number of coded bits per codeword (after LDPC encoding).
-        Satisfies: ``n = k / coderate``.
-
     Note
     ----
     - The ``build()`` method is called automatically in ``__post_init__``.

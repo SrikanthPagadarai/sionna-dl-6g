@@ -224,15 +224,13 @@ class PUSCHTrainableTransmitter(PUSCHTransmitter):
         Returns
         -------
         tuple or tf.Tensor
-            - If ``return_bits=True``: tuple ``(x_map, x, b, c)`` where:
-              - ``x_map``: Mapped symbols before layer mapping, shape
-                ``[batch_size, num_tx, num_symbols]``
-              - ``x``: Transmitted signal (freq or time domain), shape
-                ``[batch_size, num_tx, num_ant, num_ofdm_symbols, num_subcarriers]``
-                or ``[batch_size, num_tx, num_ant, num_samples]``
-              - ``b``: Information bits, shape ``[batch_size, num_tx, tb_size]``
-              - ``c``: Coded bits, shape ``[batch_size, num_tx, num_coded_bits]``
-            - If ``return_bits=False``: just ``x`` (transmitted signal)
+            If ``return_bits=True``: tuple ``(x_map, x, b, c)`` where
+            ``x_map`` contains mapped symbols before layer mapping with shape
+            ``[batch_size, num_tx, num_symbols]``,
+            ``x`` contains the transmitted signal (freq or time domain),
+            ``b`` contains information bits with shape ``[batch_size, num_tx, tb_size]``,
+            and ``c`` contains coded bits with shape ``[batch_size, num_tx, num_coded_bits]``.
+            If ``return_bits=False``: just ``x`` (transmitted signal).
 
         Notes
         -----

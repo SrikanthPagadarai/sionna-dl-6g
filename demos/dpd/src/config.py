@@ -31,37 +31,6 @@ class Config:
     batch_size : int
         Number of OFDM frames per batch. Defaults to 100.
 
-    Attributes
-    ----------
-    num_ut : int
-        Number of user terminals (fixed at 1 for single-user DPD).
-    num_ut_ant : int
-        Number of antennas per user terminal (fixed at 1).
-    num_streams_per_tx : int
-        Number of spatial streams per transmitter (fixed at 1).
-    num_ofdm_symbols : int
-        OFDM symbols per frame (fixed at 8).
-    fft_size : int
-        FFT size for OFDM modulation (fixed at 1024).
-    subcarrier_spacing : float
-        Subcarrier spacing in Hz (fixed at 15 kHz, LTE/5G compatible).
-    num_guard_carriers : tuple of int
-        Guard carriers (lower, upper) to reduce spectral leakage.
-    dc_null : bool
-        Whether DC subcarrier is nulled (True for practical systems).
-    cyclic_prefix_length : int
-        Cyclic prefix samples (fixed at 72, ~7% overhead).
-    pilot_pattern : str
-        Pilot arrangement strategy (fixed at "kronecker").
-    pilot_ofdm_symbol_indices : list of int
-        OFDM symbol indices containing pilots.
-    num_bits_per_symbol : int
-        Bits per QAM symbol (fixed at 4 for 16-QAM).
-    coderate : float
-        LDPC code rate (fixed at 0.5).
-    signal_sample_rate : float
-        Derived baseband sample rate in Hz.
-
     Notes
     -----
     **Design Rationale:**

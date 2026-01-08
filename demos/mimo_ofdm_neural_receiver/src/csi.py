@@ -54,13 +54,13 @@ class CSI:
 
     Parameters
     ----------
-    cfg : Config
+    cfg : ~demos.mimo_ofdm_neural_receiver.src.config.Config
         Configuration object containing PHY parameters (carrier frequency,
         antenna counts, CDL model selection, etc.).
 
     Attributes
     ----------
-    cfg : Config
+    cfg : ~demos.mimo_ofdm_neural_receiver.src.config.Config
         Reference to the configuration object.
 
     remove_nulled_scs : RemoveNulledSubcarriers
@@ -87,7 +87,7 @@ class CSI:
 
         Parameters
         ----------
-        cfg : Config
+        cfg : ~demos.mimo_ofdm_neural_receiver.src.config.Config
             Configuration object specifying PHY-layer parameters.
 
         Post-conditions

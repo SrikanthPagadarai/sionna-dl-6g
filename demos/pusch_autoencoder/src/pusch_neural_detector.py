@@ -122,7 +122,7 @@ class PUSCHNeuralDetector(Layer):
 
     Parameters
     ----------
-    cfg : Config
+    cfg : ~demos.pusch_autoencoder.src.config.Config
         System configuration containing MIMO dimensions, modulation order,
         and PUSCH resource grid information.
     num_conv2d_filters : int

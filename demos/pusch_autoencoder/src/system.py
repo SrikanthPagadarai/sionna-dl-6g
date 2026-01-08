@@ -69,18 +69,20 @@ class PUSCHLinkE2E(tf.keras.Model):
     const_d_min : float
         Minimum distance threshold for constellation regularization. Points
         closer than this distance incur a penalty.
-    config : Config, optional
+    config : ~demos.pusch_autoencoder.src.config.Config, optional
         System configuration. Defaults to ``Config()`` if not provided.
         Use this to customize system parameters like ``num_bs_ant``.
 
     Notes
     -----
-    - For autoencoder mode, ``channel_model`` must be a tuple ``(a, tau)`` where:
-      - ``a``: Complex CIR coefficients with shape
-               ``[num_samples, num_bs, num_bs_ant, num_ue, num_ue_ant, num_paths, num_time_steps]``
-      - ``tau``: Path delays with shape
-                 ``[num_samples, num_bs, num_ue, num_paths]``
-    - For baseline mode, ``channel_model`` must be a valid ``CIRDataset``.
+    For autoencoder mode, ``channel_model`` must be a tuple ``(a, tau)`` where
+    ``a`` contains complex CIR coefficients with shape
+    ``[num_samples, num_bs, num_bs_ant, num_ue, num_ue_ant, num_paths, num_time_steps]``
+    and ``tau`` contains path delays with shape ``[num_samples, num_bs, num_ue, num_paths]``.
+    For baseline mode, ``channel_model`` must be a valid ``CIRDataset``.
+
+    Additional notes:
+
     - ``self._cfg`` contains PUSCH resource grid information after construction.
     - ``self.trainable_variables`` returns all trainable weights (TX + RX).
     - In training mode, ``call()`` returns a scalar loss tensor.

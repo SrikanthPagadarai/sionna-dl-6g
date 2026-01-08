@@ -52,7 +52,7 @@ class Rx:
 
     Parameters
     ----------
-    cfg : Config
+    cfg : ~demos.mimo_ofdm_neural_receiver.src.config.Config
         Configuration object containing modulation, coding, and CSI settings.
 
     csi : CSI
@@ -61,7 +61,7 @@ class Rx:
 
     Attributes
     ----------
-    _cfg : Config
+    _cfg : ~demos.mimo_ofdm_neural_receiver.src.config.Config
         Reference to configuration object.
 
     _csi : CSI
