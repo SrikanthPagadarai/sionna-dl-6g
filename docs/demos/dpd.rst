@@ -231,5 +231,6 @@ In conclusion, both DPD methods significantly reduce spectral regrowth and impro
 References
 ----------
 
-[1] Dennis R. Morgan, Zhengxiang Ma, Jaehyeong Kim, Michael G. Zierdt, John Pastalan: A Generalized Memory Polynomial Model for Digital Predistortion of RF Power Amplifiers. IEEE Trans. Signal Process. 54(10): 3852-3860 (2006)
-[2] Chance Tarver, Liwen Jiang, Aryan Sefidi, Joseph R. Cavallaro: Neural Network DPD via Backpropagation through a Neural Network Model of the PA. ACSSC 2019: 358-362
+[1] Dennis R. Morgan, Zhengxiang Ma, Jaehyeong Kim, Michael G. Zierdt, John Pastalan: A Generalized Memory Polynomial Model for Digital Predistortion of RF Power Amplifiers. IEEE Trans. Signal Process. 54(10): 3852-3860 (2006).
+
+[2] Chance Tarver, Liwen Jiang, Aryan Sefidi, Joseph R. Cavallaro: Neural Network DPD via Backpropagation through a Neural Network Model of the PA. ACSSC 2019: 358-362.

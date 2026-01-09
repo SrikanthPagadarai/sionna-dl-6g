@@ -101,4 +101,5 @@ References
 ----------
 
 [1] 3GPP TR 38.901, “Study on channel model for frequencies from 0.5 to 100 GHz”, Release 18.0.
+
 [2] M. Honkala, D. Korpi and J. M. J. Huttunen, “DeepRx: Fully Convolutional Deep Learning Receiver,” in IEEE Transactions on Wireless Communications, vol. 20, no. 6, pp. 3925-3940, June 2021, doi: 10.1109/TWC.2021.3054520.
