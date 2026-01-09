@@ -4,7 +4,7 @@ Site-Specific PUSCH Autoencoder
 Overview
 --------
 
-This demo implements an end-to-end autoencoder for the 5G NR Physical Uplink Shared Channel (PUSCH), by jointly optimizing a trainable constellation at the transmitter and a neural MIMO detector at the receiver. The system operates over site-specific ray-traced channels derived from a realistic Munich urban environment, enabling the autoencoder to adapt to the propagation characteristics of this specific deployment.
+This demo implements an end-to-end autoencoder for the 5G NR Physical Uplink Shared Channel (PUSCH), by jointly optimizing a trainable constellation at the transmitter and a neural MIMO detector at the receiver [1]. The system operates over site-specific ray-traced channels derived from a realistic Munich urban environment, enabling the autoencoder to adapt to the propagation characteristics of this specific deployment.
 
 The autoencoder applies concepts from classical communication autoencoders (O'Shea & Hoydis, 2017) to a multi-user MIMO uplink scenario with 4 UEs (each with 4 antennas) transmitting to a base station with 16 or 32 antennas. This demo builds upon the following Sionna tutorials: 
 
@@ -206,8 +206,4 @@ In conclusion, the autoencoder demonstrates improved performance over the imperf
 References
 ----------
 
-- O'Shea & Hoydis, "An Introduction to Deep Learning for the Physical Layer," IEEE TCCN, 2017
-- Sionna 5G NR PUSCH Tutorial: https://nvlabs.github.io/sionna/phy/tutorials/5G_NR_PUSCH.html
-- Sionna Link-Level Simulations with Ray Tracing: https://nvlabs.github.io/sionna/phy/tutorials/Link_Level_Simulations_with_RT.html
-- Sionna Autoencoder Tutorial: https://nvlabs.github.io/sionna/phy/tutorials/Autoencoder.html
-- 3GPP TS 38.212: 5G NR Multiplexing and channel coding
+[1] T. O’Shea and J. Hoydis, “An Introduction to Deep Learning for the Physical Layer,” in IEEE Transactions on Cognitive Communications and Networking, vol. 3, no. 4, pp. 563-575, Dec. 2017, doi: 10.1109/TCCN.2017.2758370.

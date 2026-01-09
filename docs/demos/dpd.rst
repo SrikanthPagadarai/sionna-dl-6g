@@ -8,7 +8,7 @@ This demo implements Digital Predistortion (DPD) for power amplifier (PA) linear
 
 Power amplifiers are well-known to be inherently nonlinear devices that introduce amplitude-dependent gain compression (AM/AM) and phase distortion (AM/PM), along with memory effects from thermal and electrical time constants. These nonlinearities cause spectral regrowth that violates adjacent channel leakage ratio (ACLR) specifications and in-band distortion that degrades error vector magnitude (EVM). Mitigating these effects is important in order to meet spectral emission mask requirements set by regulatory bodies such as the Federal Communications Commission (FCC).
 
-DPD compensates for PA nonlinearity by applying a pre-inverse transformation to the input signal such that the PA output becomes approximately linear. The demo implements two DPD approaches, namely Least-Squares (LS) DPD using the Memory Polynomial model and Neural Network (NN) DPD using a feedforward residual architecture, both trained via the indirect learning architecture (ILA).
+DPD compensates for PA nonlinearity by applying a pre-inverse transformation to the input signal such that the PA output becomes approximately linear. The demo implements two DPD approaches, namely Least-Squares (LS) DPD using the Memory Polynomial model [1] and Neural Network (NN) DPD [2] using a feedforward residual architecture, both trained via the indirect learning architecture (ILA).
 
 
 System Architecture
@@ -231,6 +231,5 @@ In conclusion, both DPD methods significantly reduce spectral regrowth and impro
 References
 ----------
 
-- Morgan et al., "A Generalized Memory Polynomial Model for Digital Predistortion of RF Power Amplifiers," IEEE TSP, 2006
-- Ding et al., "A Robust Digital Baseband pre-distorter Constructed Using Memory Polynomials," IEEE TCOM, 2004
-- Tarver et al., "Neural Network DPD via Backpropagation through a Neural Network Model of the PA," Asilomar, 2019
+[1] Dennis R. Morgan, Zhengxiang Ma, Jaehyeong Kim, Michael G. Zierdt, John Pastalan: A Generalized Memory Polynomial Model for Digital Predistortion of RF Power Amplifiers. IEEE Trans. Signal Process. 54(10): 3852-3860 (2006)
+[2] Chance Tarver, Liwen Jiang, Aryan Sefidi, Joseph R. Cavallaro: Neural Network DPD via Backpropagation through a Neural Network Model of the PA. ACSSC 2019: 358-362

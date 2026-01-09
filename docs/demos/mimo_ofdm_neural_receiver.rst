@@ -29,13 +29,13 @@ It utilizes the configuration defined in :class:`~demos.mimo_ofdm_neural_receive
    :start-after: # [phy-parameters-start]
    :end-before: # [phy-parameters-end]
 
-:class:`~demos.mimo_ofdm_neural_receiver.src.tx.Tx` class generates random information bits, applies LDPC encoding, maps coded bits to QPSK symbols, and places them onto an OFDM resource grid with 14 OFDM symbols per slot, a 15 kHz subcarrier spacing, and an FFT size of 76. :class:`~demos.mimo_ofdm_neural_receiver.src.csi.CSI` class generates the frequency-domain CDL channel for the 4x8 MIMO link with the desired delay spread, carrier frequency, mobility, and propagation scenario by first configuring dual cross-polarized transmit and receive antenna arrays according to 3GPP TR 38.901, then generating delay-domain channel impulse responses (CIRs), and finally converting them into normalized frequency-domain channel coefficients consistent with the resource grid. :class:`~demos.mimo_ofdm_neural_receiver.src.rx.Rx`, the baseline receiver class, processes received signals by first obtaining channel estimates, then utilizing them to perform equalization, followed by demapping to produce LLRs, which are finally decoded by an LDPC decoder.
+:class:`~demos.mimo_ofdm_neural_receiver.src.tx.Tx` class generates random information bits, applies LDPC encoding, maps coded bits to QPSK symbols, and places them onto an OFDM resource grid with 14 OFDM symbols per slot, a 15 kHz subcarrier spacing, and an FFT size of 76. :class:`~demos.mimo_ofdm_neural_receiver.src.csi.CSI` class generates the frequency-domain CDL channel for the 4x8 MIMO link with the desired delay spread, carrier frequency, mobility, and propagation scenario by first configuring dual cross-polarized transmit and receive antenna arrays according to 3GPP TR 38.901 [1], then generating delay-domain channel impulse responses (CIRs), and finally converting them into normalized frequency-domain channel coefficients consistent with the resource grid. :class:`~demos.mimo_ofdm_neural_receiver.src.rx.Rx`, the baseline receiver class, processes received signals by first obtaining channel estimates, then utilizing them to perform equalization, followed by demapping to produce LLRs, which are finally decoded by an LDPC decoder.
 
 
 Neural Receiver
 ---------------
 
-The neural receiver architecture (see diagram below), implemented in :class:`~demos.mimo_ofdm_neural_receiver.src.neural_rx.NeuralRx`, is a convolutional network that processes the received resource grid as a 2D image where the spatial dimensions correspond to OFDM symbols (time) and subcarriers (frequency), with channels representing the real and imaginary parts of each receive antenna plus the noise power estimate.
+The neural receiver architecture (see diagram below), implemented in :class:`~demos.mimo_ofdm_neural_receiver.src.neural_rx.NeuralRx`, is a convolutional network (as in [2]) that processes the received resource grid as a 2D image where the spatial dimensions correspond to OFDM symbols (time) and subcarriers (frequency), with channels representing the real and imaginary parts of each receive antenna plus the noise power estimate.
 
 .. image:: /_static/neural_rx/neural_rx_network_light.svg
    :class: only-light
@@ -100,6 +100,5 @@ The neural receiver significantly outperforms the baseline with imperfect CSI, p
 References
 ----------
 
-- Honkala et al., "DeepRx: Fully Convolutional Deep Learning Receiver," IEEE TCCN, 2021
-- Sionna Neural Receiver Tutorial: https://nvlabs.github.io/sionna/phy/tutorials/Neural_Receiver.html
-- 3GPP TR 38.901: Channel model for frequencies from 0.5 to 100 GHz
+[1] 3GPP TR 38.901, “Study on channel model for frequencies from 0.5 to 100 GHz”, Release 18.0.
+[2] M. Honkala, D. Korpi and J. M. J. Huttunen, “DeepRx: Fully Convolutional Deep Learning Receiver,” in IEEE Transactions on Wireless Communications, vol. 20, no. 6, pp. 3925-3940, June 2021, doi: 10.1109/TWC.2021.3054520.
