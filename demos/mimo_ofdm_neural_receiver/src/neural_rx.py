@@ -252,6 +252,7 @@ class NeuralRx(Layer):
         self.num_resnet_layers = int(num_resnet_layers)
         self.num_res_blocks = int(num_res_blocks)
 
+        # [neural_rx-definition-start]
         # Input conv: expand from (2*num_rx_ant + 1) to num_conv2d_filters channels
         self._input_conv = Conv2D(
             filters=self.num_conv2d_filters,
@@ -279,6 +280,7 @@ class NeuralRx(Layer):
             padding="same",
             activation=None,
         )
+        # [neural_rx-definition-end]
 
         # Resource grid demapper extracts LLRs at data symbol positions
         self._rg_demapper = sn.phy.ofdm.ResourceGridDemapper(self._cfg.rg, self._cfg.sm)
@@ -354,6 +356,7 @@ class NeuralRx(Layer):
         # Input channels: 2 * num_rx_ant (real + imag) + 1 (noise) = 17 for 8 antennas
         z = tf.concat([tf.math.real(y), tf.math.imag(y), no], axis=-1)
 
+        # [neural_rx-call-start]
         # =====================================================================
         # Neural Network Forward Pass
         # =====================================================================
@@ -366,6 +369,7 @@ class NeuralRx(Layer):
 
         # Output convolution: produce per-bit LLR predictions
         z = self._output_conv(z)
+        # [neural_rx-call-end]
 
         # =====================================================================
         # Output Reshaping for Decoder Compatibility

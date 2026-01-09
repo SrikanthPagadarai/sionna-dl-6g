@@ -154,6 +154,7 @@ target_iteration = start_iteration + args.iterations
 print(f"Training from {start_iteration} to {target_iteration}")
 
 
+# [training-core-start]
 # =============================================================================
 # Training Step Function
 # Returns loss and gradients; accumulation handled in main loop
@@ -212,7 +213,6 @@ if start_iteration % ACCUMULATION_STEPS != 0:
 if target_iteration % ACCUMULATION_STEPS != 0:
     raise ValueError("target_iteration must be a multiple of ACCUMULATION_STEPS")
 
-# [training-loop-start]
 # =============================================================================
 # Training Loop
 # Gradient accumulation: sum gradients over ACCUMULATION_STEPS, then apply
@@ -246,7 +246,7 @@ for i in range(start_iteration, target_iteration):
         flush=True,
     )
 print("\n\nTraining complete.")
-# [training-loop-end]
+# [training-core-end]
 
 # =============================================================================
 # Save Checkpoint and Results

@@ -8,9 +8,9 @@ This demo implements an end-to-end autoencoder for the 5G NR Physical Uplink Sha
 
 The autoencoder applies concepts from classical communication autoencoders (O'Shea & Hoydis, 2017) to a multi-user MIMO uplink scenario with 4 UEs (each with 4 antennas) transmitting to a base station with 16 or 32 antennas. This demo builds upon the following Sionna tutorials: 
 
-- the `5G NR PUSCH Tutorial <https://nvlabs.github.io/sionna/phy/tutorials/5G_NR_PUSCH.html>`_, 
-- the `Link-level simulations with Sionna RT <https://nvlabs.github.io/sionna/phy/tutorials/Link_Level_Simulations_with_RT.html>`_, and 
-- the `End-to-end Learning with Autoencoders <https://nvlabs.github.io/sionna/phy/tutorials/Autoencoder.html>`_.
+- `5G NR PUSCH Tutorial <https://nvlabs.github.io/sionna/phy/tutorials/5G_NR_PUSCH.html>`_, 
+- `Link-level simulations with Sionna RT <https://nvlabs.github.io/sionna/phy/tutorials/Link_Level_Simulations_with_RT.html>`_, and 
+- `End-to-end Learning with Autoencoders <https://nvlabs.github.io/sionna/phy/tutorials/Autoencoder.html>`_.
 
 
 System Architecture
@@ -60,7 +60,7 @@ The only modification in the subclassed trainable receiver (:class:`~demos.pusch
 Neural Detector
 """""""""""""""
 
-The neural detector (:class:`~demos.pusch_autoencoder.src.pusch_neural_detector.PUSCHNeuralDetector`) implements a residual learning architecture that refines LS channel estimates and LMMSE soft symbols rather than learning detection from scratch. The motivation behind this design is that learning residual corrections to classical estimates is more stable than learning detection from scratch. The architecture processes shared features through convolutional residual blocks to obtain channel estimation refinement before proceeding to refine LLR through MIMO-OFDM detection head.
+The neural detector (:class:`~demos.pusch_autoencoder.src.pusch_neural_detector.PUSCHNeuralDetector`) implements a residual learning architecture that refines LS channel estimates and LMMSE soft symbols rather than learning detection from scratch. The motivation behind this design is that learning residual corrections to classical estimates is more stable than learning detection from scratch. The architecture (see diagram below) processes shared features through convolutional residual blocks to obtain channel estimation refinement before proceeding to refine LLR through MIMO-OFDM detection head. Note that while the conventional LS channel estimation relies exclusively on the pilot symbols, the channel estimation refinement additionally utilizes data symbols also.
 
 .. image:: /_static/pusch_autoencoder/pusch_autoencoder_neural_detector_toplevel_light.svg
    :class: only-light
@@ -100,7 +100,7 @@ and by the MIMO-OFDM detection head as shown below:
    :start-after: # [det-head-start]
    :end-before:  # [det-head-end]
    
-The residual blocks follow the standard design which consists of cascaded units of layer normalization, activation function, and dense layer, followed by a skip connection.
+The residual blocks follow the standard design which consists of cascaded units of layer normalization, activation function, and convolutional layer, with a skip connection to avoid gradient vanishing.
 
 .. image:: /_static/pusch_autoencoder/pusch_autoencoder_res_block_light.svg
    :class: only-light
@@ -113,7 +113,7 @@ The residual blocks follow the standard design which consists of cascaded units 
 
 Ray-traced Channel
 ^^^^^^^^^^^^^^^^^^
-Sionna RT module can be used simulate environment-specific and physically accurate channel realizations for a given scene and user position. It is built on top of `Mitsuba 3 <https://www.mitsuba-renderer.org/>`_.
+Sionna-RT module can be used simulate environment-specific and physically accurate channel realizations for a given scene and user position. It is built on top of `Mitsuba 3 <https://www.mitsuba-renderer.org/>`_.
 
 Setting up the ray tracer
 """""""""""""""""""""""""
@@ -140,7 +140,7 @@ Receiver positions are sampled in batches of 500 from the radio map using path-g
 Training
 --------
 
-Training minimizes binary cross-entropy (BCE) loss between predicted LLRs and transmitted coded bits, plus a constellation regularization term that prevents collapse by penalizing constellation points closer than a minimum distance threshold. The system uses gradient accumulation over 16 micro-batches with separate Adam optimizers for transmitter variables (LR 1e-2), receiver correction scales (LR 1e-2), and neural network weights (LR 1e-4), all with cosine decay schedules over 5,000 iterations. Eb/N0 is sampled uniformly from -2 to 10 dB for each batch, enabling the autoencoder to learn robust strategies across the operating SNR range. As mentioned previously, generating CIR data via the :class:`~demos.pusch_autoencoder.src.cir_manager.CIRManager` is a pre-requisite to training. The important pieces in the training logic are shown below:
+Training minimizes binary cross-entropy (BCE) loss between predicted LLRs and transmitted coded bits, plus a constellation regularization term that prevents collapse by penalizing constellation points closer than a minimum distance threshold. The system uses gradient accumulation over 16 micro-batches with separate Adam optimizers for transmitter variables (learning rate of 1e-2), receiver correction scales (learning rate of 1e-2), and neural network weights (learning rate of 1e-4), all with cosine decay schedules over 5,000 iterations. Eb/N0 is sampled uniformly from -2 to 10 dB for each batch, enabling the autoencoder to learn robust strategies across the operating SNR range. As mentioned previously, generating CIR data via the :class:`~demos.pusch_autoencoder.src.cir_manager.CIRManager` is a pre-requisite to training. The important pieces in the training logic are shown below:
 
 .. literalinclude:: ../../demos/pusch_autoencoder/training.py
    :language: python
@@ -152,7 +152,7 @@ Results
 
 Performance is evaluated using BER and BLER Monte Carlo simulation, comparing the trained autoencoder against baseline LMMSE detection with both perfect and imperfect (LS-estimated) CSI. The following figures show results for 16 and 32 BS antenna configurations.
 
-In the case where the number of BS antennas was 16, since this number exactly matched the total number of streams, no additional spatial diversity was available for the neural detector to exploit and the performance improvement observed was minimal.
+In the case where the number of BS antennas was 16, since this number exactly matched the total number of streams, no additional spatial diversity was available for the neural detector to exploit and the performance improvement observed was minimal. Nevertheless, it is interesting to see that the neural detector design clearly improves upon the conventional architecture consisting of LS channel estimation combined with LMMSE detection.
 
 .. figure:: ../../demos/pusch_autoencoder/results/ber_plot_1bs_16bs_ant_x_4ue_4ue_ant.png
    :alt: BER Plot 16 BS Antennas
@@ -168,7 +168,7 @@ In the case where the number of BS antennas was 16, since this number exactly ma
 
    BLER comparison: autoencoder vs. baseline LMMSE with 16 BS antennas.
 
-On the other hand, when additional spatial diveristy was made available, the neural detector was able to exploit the additional degrees of freedom and outperform conventional LS channel estimation combined with LMMSE detection.
+On the other hand, when additional spatial diveristy was made available with the number of BS antennas set to 32, the neural detector was able to exploit the additional degrees of freedom and outperform conventional architecture.
 
 .. figure:: ../../demos/pusch_autoencoder/results/ber_plot_1bs_32bs_ant_x_4ue_4ue_ant.png
    :alt: BER Plot 32 BS Antennas
@@ -200,7 +200,7 @@ The learned constellations in both scenarios are shown below.
 
    Learned constellation geometry (32 BS antennas) compared to standard 16-QAM.
 
-In conclusion, the autoencoder demonstrates improved performance over imperfect-CSI baseline, particularly at mid-to-high SNR where channel estimation errors dominate. The learned constellation points adapt to the site-specific channel statistics while maintaining sufficient minimum distance for reliable detection.
+In conclusion, the autoencoder demonstrates improved performance over the imperfect-CSI baseline, particularly at mid-to-high SNR where channel estimation errors dominate. The learned constellation points adapt to the site-specific channel statistics while maintaining sufficient minimum distance for reliable detection. The autoencoder does not yet match the perfect-CSI baseline, indicating room for increased model capacity, architectural refinements, hyperparameter optimization, or alternative training strategies.
 
 
 References

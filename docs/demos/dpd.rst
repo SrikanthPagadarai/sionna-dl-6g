@@ -76,7 +76,7 @@ The NN-DPD (:class:`~demos.dpd.src.nn_dpd.NeuralNetworkDPD`) uses a feedforward 
    :class: only-dark
    :alt: Neural Network DPD Architecture
 
-This network processes sliding windows of complex samples (split into real/imaginary channels), and their envelopes raised to powers of 2, 4, and 6 through residual blocks encapsulated between input and output dense layers. The residual blocks follow the standard design which consists of cascaded units of layer normalization, activation function, and dense layer, followed by a skip connection. The output layer is initialized to zeros, ensuring the initial network output equals the input (identity function via skip connection). This provides a stable starting point where training learns corrections relative to the pass-through behavior.
+This network processes sliding windows of complex samples (split into real/imaginary channels), and their envelopes raised to powers of 2, 4, and 6 through residual blocks encapsulated between input and output dense layers. The residual blocks follow the standard design which consists of cascaded units of layer normalization, activation function, and dense layer, with a skip connection to avoid gradient vanishing. The output layer is initialized to zeros, ensuring the initial network output equals the input (identity function via skip connection). This provides a stable starting point where training learns corrections relative to the pass-through behavior.
 
 The input/output dense layers and the residual blocks are initialized as shown below:
 
